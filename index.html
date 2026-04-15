@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N. // Neural Protocol</title>
+<title>H.U.M.A.N.</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
 
@@ -125,6 +125,7 @@
     height: 100%;
     z-index: 2;
     pointer-events: none;
+    background: transparent;
   }
 
   .coord-labels-x, .coord-labels-y {
@@ -134,6 +135,7 @@
     color: var(--textdim);
     font-family: 'VT323', monospace;
     z-index: 3;
+    text-shadow: 0 0 4px black;
   }
   .coord-labels-x {
     top: -20px;
@@ -182,7 +184,7 @@
     z-index: 10;
   }
 
-  /* Right panel (same as before) */
+  /* Right panel unchanged */
   #editor-panel {
     display: grid;
     grid-template-rows: 40px 1fr 52px 140px;
@@ -511,9 +513,6 @@
     running: false
   };
 
-  let actionQueue = [];
-  let isPlaying = false;
-
   // --------------------------------------------------------------
   // VIDEO PLAYER (single video covering entire grid)
   // --------------------------------------------------------------
@@ -535,11 +534,11 @@
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     
-    // Draw grid lines
+    // Draw semi-transparent grid lines (so video shows through)
     const cellW = w / 4;
     const cellH = h / 4;
     ctx.beginPath();
-    ctx.strokeStyle = '#2a3a2a';
+    ctx.strokeStyle = 'rgba(42, 58, 42, 0.8)';
     ctx.lineWidth = 2;
     for (let i = 0; i <= 4; i++) {
       ctx.moveTo(i * cellW, 0);
@@ -549,7 +548,7 @@
       ctx.stroke();
     }
 
-    // Draw goal marker (orange ring)
+    // Goal marker (orange ring) - semi-transparent fill
     const goalX = state.goal.col * cellW;
     const goalY = state.goal.row * cellH;
     ctx.beginPath();
@@ -557,10 +556,10 @@
     ctx.strokeStyle = '#ff6b00';
     ctx.lineWidth = 3;
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,107,0,0.3)';
+    ctx.fillStyle = 'rgba(255,107,0,0.4)';
     ctx.fill();
 
-    // Draw player marker (arrow)
+    // Player marker (arrow) - bright green
     const playerX = state.pos.col * cellW;
     const playerY = state.pos.row * cellH;
     const centerX = playerX + cellW/2;
@@ -606,11 +605,22 @@
     };
     const videoName = videoMap[action] || 'idle';
     const src = `videos/${videoName}.mp4`;
+    
+    // Stop current playback
     video.pause();
     video.src = src;
     video.loop = (action === 'idle');
     video.load();
+    
+    // Show fallback if video fails to load (so user knows it's working)
+    video.onerror = () => {
+      console.warn(`Video ${src} not found, using placeholder`);
+      // Draw placeholder text on canvas instead? For now just continue
+      if (callback) callback();
+    };
+    
     video.play().catch(e => console.log('Video play error', e));
+    
     if (!video.loop) {
       const onEnd = () => {
         video.removeEventListener('ended', onEnd);
@@ -622,7 +632,7 @@
         if (callback) callback();
       };
       video.addEventListener('ended', onEnd);
-      // Fallback timeout
+      // Fallback timeout in case video never ends
       setTimeout(() => {
         if (video.loop === false && !video.ended) {
           video.removeEventListener('ended', onEnd);
