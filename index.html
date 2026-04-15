@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N. // Neural Protocol</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
 
@@ -113,7 +113,7 @@
     z-index: 1;
   }
 
-  #grid-overlay {
+  #goal-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -442,7 +442,7 @@
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
       <video id="action-video" muted playsinline autoplay loop></video>
-      <canvas id="grid-overlay"></canvas>
+      <canvas id="goal-overlay"></canvas>
       <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
       <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
       <div id="run-progress"></div>
@@ -512,28 +512,14 @@
   // SINGLE VIDEO, FULL GRID, PER‑CELL VIDEOS
   // --------------------------------------------------------------
   const video = document.getElementById('action-video');
-  const canvas = document.getElementById('grid-overlay');
+  const canvas = document.getElementById('goal-overlay');
   let ctx;
 
   function getVideoPath(col, row, action) {
     return `videos/cell_${col}_${row}_${action}.mp4`;
   }
 
-  // Preload idle videos for all cells (optional but good for caching)
-  function preloadIdleVideos() {
-    for (let row = 0; row < 4; row++) {
-      for (let col = 0; col < 4; col++) {
-        const src = getVideoPath(col, row, 'idle');
-        const link = document.createElement('link');
-        link.rel = 'preload';
-        link.as = 'video';
-        link.href = src;
-        document.head.appendChild(link);
-      }
-    }
-  }
-
-  // Play idle video for the current player cell
+  // Force play idle video for a specific cell
   function playIdleForCell(col, row) {
     const src = getVideoPath(col, row, 'idle');
     if (video.src !== src) {
@@ -541,24 +527,39 @@
       video.src = src;
       video.loop = true;
       video.load();
-      video.play().catch(e => console.log('Idle play error', e));
+      // Wait until video can play
+      const playIt = () => {
+        video.play().catch(e => console.log(`Idle play error for ${src}`, e));
+      };
+      if (video.readyState >= 3) {
+        playIt();
+      } else {
+        video.addEventListener('canplaythrough', playIt, { once: true });
+      }
     } else if (video.paused) {
       video.play().catch(e => {});
     }
   }
 
-  // Play an action video on a specific cell, then resume idle on a target cell
+  // Play an action video, then resume idle on a target cell
   function playActionOnCell(actionCol, actionRow, action, duration, afterCol, afterRow, callback) {
     const src = getVideoPath(actionCol, actionRow, action);
     video.pause();
     video.loop = false;
     video.src = src;
     video.load();
-    video.play().catch(e => {
-      console.log('Action video error, using fallback');
-      // Fallback: show a quick overlay animation? For now just continue
-      if (callback) callback();
-    });
+    const playIt = () => {
+      video.play().catch(e => {
+        console.log(`Action video error: ${src}`, e);
+        // Fallback: just continue
+        if (callback) callback();
+      });
+    };
+    if (video.readyState >= 3) {
+      playIt();
+    } else {
+      video.addEventListener('canplaythrough', playIt, { once: true });
+    }
     const onEnd = () => {
       video.removeEventListener('ended', onEnd);
       // Resume idle on the new cell
@@ -566,7 +567,7 @@
       if (callback) callback();
     };
     video.addEventListener('ended', onEnd);
-    // Timeout fallback
+    // Safety timeout
     setTimeout(() => {
       if (!video.loop && !video.ended) {
         video.removeEventListener('ended', onEnd);
@@ -576,28 +577,28 @@
     }, duration + 500);
   }
 
-  // Helper for turn actions (same cell)
+  // Turn action (same cell)
   function playTurnAction(col, row, action, duration, callback) {
     playActionOnCell(col, row, action, duration, col, row, callback);
   }
 
-  // Helper for move forward: play forward on source cell, then idle on destination cell
+  // Move forward: play forward on source, then idle on destination
   function playMoveForward(fromCol, fromRow, toCol, toRow, duration, callback) {
     playActionOnCell(fromCol, fromRow, 'forward', duration, toCol, toRow, callback);
   }
 
   // --------------------------------------------------------------
-  // GRID OVERLAY DRAWING
+  // GOAL OVERLAY (only orange target ring)
   // --------------------------------------------------------------
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
-    drawOverlay();
+    drawGoalOverlay();
   }
 
-  function drawOverlay() {
+  function drawGoalOverlay() {
     if (!ctx) return;
     const w = canvas.width;
     const h = canvas.height;
@@ -605,18 +606,6 @@
     
     const cellW = w / 4;
     const cellH = h / 4;
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(42, 58, 42, 0.8)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i <= 4; i++) {
-      ctx.moveTo(i * cellW, 0);
-      ctx.lineTo(i * cellW, h);
-      ctx.moveTo(0, i * cellH);
-      ctx.lineTo(w, i * cellH);
-      ctx.stroke();
-    }
-
-    // Goal marker
     const goalX = state.goal.col * cellW;
     const goalY = state.goal.row * cellH;
     ctx.beginPath();
@@ -626,44 +615,10 @@
     ctx.stroke();
     ctx.fillStyle = 'rgba(255,107,0,0.4)';
     ctx.fill();
-
-    // Player arrow
-    const playerX = state.pos.col * cellW;
-    const playerY = state.pos.row * cellH;
-    const centerX = playerX + cellW/2;
-    const centerY = playerY + cellH/2;
-    const arrowSize = Math.min(cellW, cellH) * 0.35;
-    ctx.fillStyle = '#00ff41';
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#00ff41';
-    ctx.beginPath();
-    if (state.dir === 'N') {
-      ctx.moveTo(centerX, centerY - arrowSize);
-      ctx.lineTo(centerX - arrowSize/2, centerY + arrowSize/2);
-      ctx.lineTo(centerX, centerY + arrowSize/4);
-      ctx.lineTo(centerX + arrowSize/2, centerY + arrowSize/2);
-    } else if (state.dir === 'S') {
-      ctx.moveTo(centerX, centerY + arrowSize);
-      ctx.lineTo(centerX - arrowSize/2, centerY - arrowSize/2);
-      ctx.lineTo(centerX, centerY - arrowSize/4);
-      ctx.lineTo(centerX + arrowSize/2, centerY - arrowSize/2);
-    } else if (state.dir === 'E') {
-      ctx.moveTo(centerX + arrowSize, centerY);
-      ctx.lineTo(centerX - arrowSize/2, centerY - arrowSize/2);
-      ctx.lineTo(centerX - arrowSize/4, centerY);
-      ctx.lineTo(centerX - arrowSize/2, centerY + arrowSize/2);
-    } else if (state.dir === 'W') {
-      ctx.moveTo(centerX - arrowSize, centerY);
-      ctx.lineTo(centerX + arrowSize/2, centerY - arrowSize/2);
-      ctx.lineTo(centerX + arrowSize/4, centerY);
-      ctx.lineTo(centerX + arrowSize/2, centerY + arrowSize/2);
-    }
-    ctx.fill();
-    ctx.shadowBlur = 0;
   }
 
   function refreshUI() {
-    drawOverlay();
+    drawGoalOverlay();
     updateHUD();
   }
 
@@ -681,7 +636,7 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // --------------------------------------------------------------
-  // INTERPRETER (same as before, fully functional)
+  // INTERPRETER (full Python-like, supports loops, vars, functions)
   // --------------------------------------------------------------
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
@@ -852,9 +807,9 @@
   }
   
   // --------------------------------------------------------------
-  // EXECUTION WITH FULL‑GRID VIDEOS
+  // EXECUTION ENGINE
   // --------------------------------------------------------------
-  const ACTION_DURATION = 800; // milliseconds, adjust to match your video lengths
+  const ACTION_DURATION = 800; // adjust to your video lengths
 
   function runCode() {
     if (state.running) return;
@@ -1080,7 +1035,7 @@
   // --------------------------------------------------------------
   // INIT
   // --------------------------------------------------------------
-  window.addEventListener('resize', () => { resizeCanvas(); drawOverlay(); });
+  window.addEventListener('resize', () => { resizeCanvas(); drawGoalOverlay(); });
   document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('grid-container');
     const rect = container.getBoundingClientRect();
@@ -1088,7 +1043,6 @@
     canvas.height = rect.height;
     ctx = canvas.getContext('2d');
     resizeCanvas();
-    preloadIdleVideos();
     initEditor();
     document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
     document.getElementById('btn-run').addEventListener('click', () => {
