@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>H.U.M.A.N. // Neural Protocol</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
+
+  :root {
+    --bg:        #0a0c0f;
+    --panel:     #0f1318;
+    --border:    #1e2a1e;
+    --accent:    #00ff41;
+    --accent2:   #ff6b00;
+    --accent3:   #00cfff;
+    --dim:       #2a3a2a;
+    --text:      #b8d4b8;
+    --textdim:   #4a6a4a;
+    --error:     #ff3333;
+    --warning:   #ffcc00;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.015) 2px, rgba(0,255,65,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  #app {
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 1fr 480px;
+    height: 100vh;
+  }
+
+  #header {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 24px;
+    position: relative;
+  }
+
+  #header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 18px;
+    color: var(--accent);
+    letter-spacing: 4px;
+    text-shadow: 0 0 20px rgba(0,255,65,0.5);
+  }
+  .logo span { color: var(--accent2); }
+
+  .header-info {
+    display: flex;
+    gap: 24px;
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--textdim);
+    letter-spacing: 2px;
+  }
+  .header-info .val {
+    color: var(--accent3);
+    font-family: 'VT323', monospace;
+    font-size: 15px;
+  }
+
+  /* Grid viewport with video background */
+  #viewport {
+    background: #000;
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #grid-container {
+    position: relative;
+    width: min(80vh, 80vw);
+    aspect-ratio: 1 / 1;
+    background: #000;
+  }
+
+  #action-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+  }
+
+  #grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .coord-labels-x, .coord-labels-y {
+    position: absolute;
+    display: flex;
+    font-size: 13px;
+    color: var(--textdim);
+    font-family: 'VT323', monospace;
+    z-index: 3;
+  }
+  .coord-labels-x {
+    top: -20px;
+    left: 0;
+    width: 100%;
+    justify-content: space-around;
+  }
+  .coord-labels-y {
+    left: -20px;
+    top: 0;
+    height: 100%;
+    flex-direction: column;
+    justify-content: space-around;
+    align-items: center;
+  }
+
+  #status-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,12,15,0.9);
+    border: 1px solid var(--dim);
+    padding: 6px 20px;
+    font-size: 12px;
+    color: var(--textdim);
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  #status-bar .status-val { color: var(--accent); }
+
+  #dir-indicator {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--dim);
+    background: rgba(10,12,15,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+
+  /* Right panel (same as before) */
+  #editor-panel {
+    display: grid;
+    grid-template-rows: 40px 1fr 52px 140px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  #editor-tabs {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    gap: 8px;
+    background: rgba(0,0,0,0.3);
+  }
+  .tab {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--textdim);
+    padding: 4px 10px;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    display: inline-block;
+    margin-right: 6px;
+    animation: blink 2s step-end infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  .editor-wrapper {
+    position: relative;
+    overflow: hidden;
+    background: #0a0c0f;
+  }
+  .editor-pane {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background: #0a0c0f;
+  }
+  .editor-pane.hidden { display: none; }
+
+  .code-editor-container {
+    position: relative;
+    height: 100%;
+  }
+  #line-numbers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 44px;
+    padding: 12px 0;
+    text-align: right;
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--textdim);
+    background: rgba(0,0,0,0.5);
+    border-right: 1px solid var(--border);
+    user-select: none;
+    font-family: 'Share Tech Mono', monospace;
+    pointer-events: none;
+    z-index: 2;
+  }
+  #code-input, #code-highlight {
+    position: absolute;
+    left: 44px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 12px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    line-height: 20px;
+    tab-size: 4;
+    border: none;
+    background: transparent;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    overflow-y: auto;
+  }
+  #code-input {
+    color: transparent;
+    caret-color: var(--accent);
+    resize: none;
+    outline: none;
+    z-index: 3;
+  }
+  #code-highlight {
+    pointer-events: none;
+    z-index: 1;
+    color: var(--text);
+    background: transparent;
+  }
+  .kw   { color: #cc88ff; }
+  .builtin { color: var(--accent2); font-weight: bold; }
+  .cm   { color: #5a7a5a; font-style: italic; }
+
+  .instructions-container {
+    padding: 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-y: auto;
+  }
+  .instructions-container .comment-line {
+    color: #5a7a5a;
+    white-space: pre-wrap;
+  }
+
+  #controls-bar {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px;
+    gap: 12px;
+    background: rgba(0,0,0,0.4);
+  }
+  #btn-run {
+    background: linear-gradient(135deg, #003300, #005500);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 3px;
+    padding: 8px 20px;
+    cursor: pointer;
+  }
+  #btn-run.running {
+    background: linear-gradient(135deg, #330000, #550000);
+    border-color: var(--error);
+    color: var(--error);
+  }
+  #btn-clear {
+    background: transparent;
+    border: 1px solid var(--dim);
+    color: var(--textdim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+
+  #console {
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #console-header {
+    flex-shrink: 0;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--textdim);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--dim);
+  }
+  #console-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+    font-size: 11px;
+    line-height: 18px;
+  }
+  #console-clear { cursor: pointer; }
+  #console-clear:hover { color: var(--accent); }
+  .log-line { color: var(--textdim); }
+  .log-success { color: var(--accent); }
+  .log-error { color: var(--error); }
+  .log-warn { color: var(--warning); }
+  .log-info { color: var(--accent3); }
+  .log-exec { color: #cc88ff; }
+
+  #overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    flex-direction: column;
+    gap: 24px;
+  }
+  #overlay.show {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .overlay-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 8px;
+  }
+  .overlay-title.win { color: var(--accent); text-shadow: 0 0 40px rgba(0,255,65,0.6); }
+  .overlay-sub {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--textdim);
+  }
+  #btn-next {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 4px;
+    padding: 12px 32px;
+    cursor: pointer;
+  }
+
+  #run-progress {
+    position: absolute;
+    bottom: 0; left: 0;
+    height: 2px;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.1s linear;
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header id="header">
+    <div class="logo">H.<span>U</span>.M.<span>A</span>.N.</div>
+    <div style="width:1px; height:24px; background:var(--dim)"></div>
+    <div style="font-size:10px; letter-spacing:2px; color:var(--textdim)">NEURAL PROTOCOL</div>
+    <div class="header-info">
+      <div>LEVEL&nbsp;<span class="val" id="hdr-level">01</span></div>
+      <div>POS&nbsp;<span class="val" id="hdr-pos">0,0</span></div>
+      <div>FACING&nbsp;<span class="val" id="hdr-facing">NORTH</span></div>
+      <div>STEPS&nbsp;<span class="val" id="hdr-steps">0</span></div>
+    </div>
+  </header>
+
+  <div id="viewport">
+    <div id="dir-indicator">↑</div>
+    <div id="grid-container">
+      <video id="action-video" muted playsinline autoplay loop></video>
+      <canvas id="grid-overlay"></canvas>
+      <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
+      <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+      <div id="run-progress"></div>
+    </div>
+    <div id="status-bar">
+      POS: <span class="status-val" id="st-pos">A1</span> &nbsp;|&nbsp;
+      FACING: <span class="status-val" id="st-facing">NORTH</span> &nbsp;|&nbsp;
+      TARGET: <span class="status-val" id="st-target">--</span> &nbsp;|&nbsp;
+      STATUS: <span class="status-val" id="st-status">IDLE</span>
+    </div>
+  </div>
+
+  <div id="editor-panel">
+    <div id="editor-tabs">
+      <div class="tab active" data-tab="code">main.py</div>
+      <div class="tab" data-tab="instructions">instructions.txt</div>
+      <div style="margin-left:auto; font-size:9px; letter-spacing:2px; color:var(--textdim)">PYTHON 3.KINDA</div>
+    </div>
+    <div class="editor-wrapper">
+      <div id="code-pane" class="editor-pane">
+        <div class="code-editor-container">
+          <div id="line-numbers" class="line-numbers"></div>
+          <div id="code-highlight"></div>
+          <textarea id="code-input" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="# Write your code here..."></textarea>
+        </div>
+      </div>
+      <div id="instructions-pane" class="editor-pane hidden">
+        <div class="instructions-container" id="instructions-content"></div>
+      </div>
+    </div>
+    <div id="controls-bar">
+      <button id="btn-clear">⟳ RESET</button>
+      <button id="btn-run">▶ RUN</button>
+    </div>
+    <div id="console">
+      <div id="console-header"><span>⎯ CONSOLE LOG ⎯</span><span id="console-clear">CLEAR</span></div>
+      <div id="console-body"></div>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="overlay-title win">OBJECTIVE COMPLETE</div>
+  <div class="overlay-sub" id="overlay-sub">UNIT REACHED TARGET COORDINATES</div>
+  <button id="btn-next" onclick="nextLevel()">⟫ NEXT LEVEL ⟪</button>
+</div>
+
+<script>
+  // --------------------------------------------------------------
+  // GAME STATE
+  // --------------------------------------------------------------
+  const DIRS = ['N','E','S','W'];
+  const DIR_ARROWS = { N:'↑', E:'→', S:'↓', W:'←' };
+  const DIR_NAMES = { N:'NORTH', E:'EAST', S:'SOUTH', W:'WEST' };
+  const MOVE = { N: [0,-1], E: [1,0], S: [0,1], W: [-1,0] };
+
+  let state = {
+    level: 1,
+    pos: {col:0, row:0},
+    dir: 'N',
+    goal: {col:3, row:3},
+    steps: 0,
+    running: false
+  };
+
+  let actionQueue = [];
+  let isPlaying = false;
+
+  // --------------------------------------------------------------
+  // VIDEO PLAYER (single video covering entire grid)
+  // --------------------------------------------------------------
+  const video = document.getElementById('action-video');
+  const canvas = document.getElementById('grid-overlay');
+  let ctx;
+
+  function resizeCanvas() {
+    const container = document.getElementById('grid-container');
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    drawOverlay();
+  }
+
+  function drawOverlay() {
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    
+    // Draw grid lines
+    const cellW = w / 4;
+    const cellH = h / 4;
+    ctx.beginPath();
+    ctx.strokeStyle = '#2a3a2a';
+    ctx.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      ctx.moveTo(i * cellW, 0);
+      ctx.lineTo(i * cellW, h);
+      ctx.moveTo(0, i * cellH);
+      ctx.lineTo(w, i * cellH);
+      ctx.stroke();
+    }
+
+    // Draw goal marker (orange ring)
+    const goalX = state.goal.col * cellW;
+    const goalY = state.goal.row * cellH;
+    ctx.beginPath();
+    ctx.arc(goalX + cellW/2, goalY + cellH/2, Math.min(cellW, cellH) * 0.3, 0, 2 * Math.PI);
+    ctx.strokeStyle = '#ff6b00';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,107,0,0.3)';
+    ctx.fill();
+
+    // Draw player marker (arrow)
+    const playerX = state.pos.col * cellW;
+    const playerY = state.pos.row * cellH;
+    const centerX = playerX + cellW/2;
+    const centerY = playerY + cellH/2;
+    const arrowSize = Math.min(cellW, cellH) * 0.35;
+    ctx.fillStyle = '#00ff41';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#00ff41';
+    ctx.beginPath();
+    if (state.dir === 'N') {
+      ctx.moveTo(centerX, centerY - arrowSize);
+      ctx.lineTo(centerX - arrowSize/2, centerY + arrowSize/2);
+      ctx.lineTo(centerX, centerY + arrowSize/4);
+      ctx.lineTo(centerX + arrowSize/2, centerY + arrowSize/2);
+    } else if (state.dir === 'S') {
+      ctx.moveTo(centerX, centerY + arrowSize);
+      ctx.lineTo(centerX - arrowSize/2, centerY - arrowSize/2);
+      ctx.lineTo(centerX, centerY - arrowSize/4);
+      ctx.lineTo(centerX + arrowSize/2, centerY - arrowSize/2);
+    } else if (state.dir === 'E') {
+      ctx.moveTo(centerX + arrowSize, centerY);
+      ctx.lineTo(centerX - arrowSize/2, centerY - arrowSize/2);
+      ctx.lineTo(centerX - arrowSize/4, centerY);
+      ctx.lineTo(centerX - arrowSize/2, centerY + arrowSize/2);
+    } else if (state.dir === 'W') {
+      ctx.moveTo(centerX - arrowSize, centerY);
+      ctx.lineTo(centerX + arrowSize/2, centerY - arrowSize/2);
+      ctx.lineTo(centerX + arrowSize/4, centerY);
+      ctx.lineTo(centerX + arrowSize/2, centerY + arrowSize/2);
+    }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  function playActionVideo(action, duration, callback) {
+    const videoMap = {
+      'move_forward': 'forward',
+      'turn_left': 'turn_left',
+      'turn_right': 'turn_right',
+      'success': 'success',
+      'error': 'error',
+      'idle': 'idle'
+    };
+    const videoName = videoMap[action] || 'idle';
+    const src = `videos/${videoName}.mp4`;
+    video.pause();
+    video.src = src;
+    video.loop = (action === 'idle');
+    video.load();
+    video.play().catch(e => console.log('Video play error', e));
+    if (!video.loop) {
+      const onEnd = () => {
+        video.removeEventListener('ended', onEnd);
+        // Resume idle after action
+        video.src = 'videos/idle.mp4';
+        video.loop = true;
+        video.load();
+        video.play().catch(e => {});
+        if (callback) callback();
+      };
+      video.addEventListener('ended', onEnd);
+      // Fallback timeout
+      setTimeout(() => {
+        if (video.loop === false && !video.ended) {
+          video.removeEventListener('ended', onEnd);
+          video.src = 'videos/idle.mp4';
+          video.loop = true;
+          video.load();
+          video.play().catch(e => {});
+          if (callback) callback();
+        }
+      }, duration + 200);
+    } else {
+      if (callback) callback();
+    }
+  }
+
+  function playIdle() {
+    playActionVideo('idle', 0, null);
+  }
+
+  // --------------------------------------------------------------
+  // INTERPRETER (same as before, supports variables, loops, functions)
+  // --------------------------------------------------------------
+  function evaluateExpression(expr, scope) {
+    expr = expr.trim();
+    let replaced = expr.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
+      if (match === 'True') return 'true';
+      if (match === 'False') return 'false';
+      if (match === 'None') return 'null';
+      if (match in scope) return JSON.stringify(scope[match]);
+      return match;
+    });
+    if (!/^[\d\s\+\-\*\/\%\(\)\.\!\=\<\>\&\|truefalsenull]+$/i.test(replaced)) return 0;
+    try { return new Function('return (' + replaced + ')')(); } catch(e) { return 0; }
+  }
+
+  function interpret(code, actions, errors, scope, depth, limit) {
+    if (depth > 100) throw new Error('Recursion limit');
+    const lines = code.split('\n');
+    let i = 0;
+    while (i < lines.length) {
+      if (actions.length >= limit) throw new Error('Step limit');
+      let line = lines[i];
+      let stripped = line.trimStart();
+      if (!stripped || stripped.startsWith('#')) { i++; continue; }
+      
+      const defMatch = stripped.match(/^def\s+(\w+)\s*\(\)\s*:/);
+      if (defMatch) {
+        const funcName = defMatch[1];
+        const indent = line.length - stripped.length;
+        const bodyLines = [];
+        i++;
+        while (i < lines.length) {
+          const l2 = lines[i];
+          if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
+          const ind2 = l2.length - l2.trimStart().length;
+          if (ind2 <= indent) break;
+          bodyLines.push(l2.slice(indent + 4));
+          i++;
+        }
+        if (!scope.__funcs__) scope.__funcs__ = {};
+        scope.__funcs__[funcName] = bodyLines.join('\n');
+        continue;
+      }
+      
+      const callMatch = stripped.match(/^(\w+)\(\)$/);
+      if (callMatch && !['move_forward','turn_left','turn_right'].includes(callMatch[1])) {
+        const funcName = callMatch[1];
+        if (scope.__funcs__ && scope.__funcs__[funcName]) {
+          interpret(scope.__funcs__[funcName], actions, errors, { ...scope }, depth+1, limit);
+        } else errors.push(`Function '${funcName}' not defined`);
+        i++;
+        continue;
+      }
+      
+      const forMatch = stripped.match(/^for\s+(\w+)\s+in\s+range\((.+)\)\s*:/);
+      if (forMatch) {
+        const varName = forMatch[1];
+        let rangeArgs = evaluateExpression(forMatch[2], scope);
+        if (!Array.isArray(rangeArgs)) rangeArgs = [0, Number(rangeArgs)];
+        let start = rangeArgs.length >= 2 ? Number(rangeArgs[0]) : 0;
+        let stop = rangeArgs.length >= 1 ? Number(rangeArgs[rangeArgs.length-1]) : 0;
+        let step = rangeArgs.length === 3 ? Number(rangeArgs[2]) : 1;
+        const indent = line.length - stripped.length;
+        const bodyLines = [];
+        i++;
+        while (i < lines.length) {
+          const l2 = lines[i];
+          if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
+          const ind2 = l2.length - l2.trimStart().length;
+          if (ind2 <= indent) break;
+          bodyLines.push(l2.slice(indent + 4));
+          i++;
+        }
+        const body = bodyLines.join('\n');
+        for (let v = start; step > 0 ? v < stop : v > stop; v += step) {
+          const newScope = { ...scope, __funcs__: scope.__funcs__ };
+          newScope[varName] = v;
+          interpret(body, actions, errors, newScope, depth+1, limit);
+        }
+        continue;
+      }
+      
+      const whileMatch = stripped.match(/^while\s+(.+)\s*:/);
+      if (whileMatch) {
+        const condition = whileMatch[1];
+        const indent = line.length - stripped.length;
+        const bodyLines = [];
+        i++;
+        while (i < lines.length) {
+          const l2 = lines[i];
+          if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
+          const ind2 = l2.length - l2.trimStart().length;
+          if (ind2 <= indent) break;
+          bodyLines.push(l2.slice(indent + 4));
+          i++;
+        }
+        const body = bodyLines.join('\n');
+        let iter = 0;
+        while (evaluateExpression(condition, scope) && iter < 200) {
+          interpret(body, actions, errors, scope, depth+1, limit);
+          iter++;
+        }
+        if (iter >= 200) errors.push('While loop exceeded 200 iterations');
+        continue;
+      }
+      
+      if (stripped.match(/^if\s+.+:/) || stripped.match(/^elif\s+.+:/) || stripped.match(/^else\s*:/)) {
+        const indent = line.length - stripped.length;
+        let blocks = [];
+        let currentBlock = { cond: null, body: [] };
+        while (i < lines.length) {
+          const curLine = lines[i];
+          const curStripped = curLine.trimStart();
+          const curIndent = curLine.length - curStripped.length;
+          if (curIndent < indent) break;
+          if (curStripped.match(/^(if|elif)\s+(.+):/)) {
+            if (currentBlock.cond !== null || currentBlock.body.length) blocks.push(currentBlock);
+            const match = curStripped.match(/^(if|elif)\s+(.+):/);
+            currentBlock = { cond: match[2], body: [] };
+          } else if (curStripped.match(/^else\s*:/)) {
+            if (currentBlock.cond !== null || currentBlock.body.length) blocks.push(currentBlock);
+            currentBlock = { cond: 'True', body: [] };
+          } else if (curStripped !== '') {
+            if (curIndent > indent) currentBlock.body.push(curLine.slice(indent + 4));
+            else break;
+          }
+          i++;
+        }
+        if (currentBlock.body.length || currentBlock.cond !== null) blocks.push(currentBlock);
+        let executed = false;
+        for (let blk of blocks) {
+          if (executed) break;
+          let condVal = (blk.cond === 'True') ? true : evaluateExpression(blk.cond, scope);
+          if (condVal) {
+            interpret(blk.body.join('\n'), actions, errors, scope, depth+1, limit);
+            executed = true;
+          }
+        }
+        continue;
+      }
+      
+      const assignMatch = stripped.match(/^(\w+)\s*=\s*(.+)$/);
+      if (assignMatch) {
+        const varName = assignMatch[1];
+        if (['move_forward','turn_left','turn_right','for','while','if','def'].includes(varName)) {
+          errors.push(`Cannot assign to '${varName}'`);
+        } else {
+          scope[varName] = evaluateExpression(assignMatch[2], scope);
+        }
+        i++;
+        continue;
+      }
+      
+      if (stripped === 'move_forward()') { actions.push('move_forward'); i++; continue; }
+      if (stripped === 'turn_left()') { actions.push('turn_left'); i++; continue; }
+      if (stripped === 'turn_right()') { actions.push('turn_right'); i++; continue; }
+      if (stripped.startsWith('print(')) { i++; continue; }
+      if (stripped === 'pass') { i++; continue; }
+      if (stripped !== '') errors.push(`Syntax error: "${stripped.substring(0,50)}"`);
+      i++;
+    }
+  }
+  
+  function parseAndExecute(code) {
+    const actions = [];
+    const errors = [];
+    try { interpret(code, actions, errors, { __funcs__: {} }, 0, 500); } catch(e) { errors.push(e.message); }
+    return { actions, errors };
+  }
+  
+  // --------------------------------------------------------------
+  // EXECUTION WITH VIDEO PLAYBACK
+  // --------------------------------------------------------------
+  const ACTION_DURATION = 800; // ms, adjust to your video length
+  
+  function runCode() {
+    if (state.running) return;
+    const code = document.getElementById('code-input').value;
+    if (!code.trim()) { logConsole('> No code.', 'log-warn'); return; }
+    logConsole('> Compiling...', 'log-info');
+    const { actions, errors } = parseAndExecute(code);
+    if (errors.length) {
+      errors.forEach(e => logConsole('⚠ ' + e, 'log-error'));
+      logConsole('Execution halted.', 'log-warn');
+      playActionVideo('error', 1000, null);
+      return;
+    }
+    if (actions.length === 0) { logConsole('> No actions found.', 'log-warn'); return; }
+    logConsole(`> Executing ${actions.length} actions...`, 'log-success');
+    state.running = true;
+    state.steps += actions.length;
+    document.getElementById('btn-run').classList.add('running');
+    document.getElementById('btn-run').textContent = '■ STOP';
+    setStatus('RUNNING');
+    
+    // Simulate movement
+    const simPos = { ...state.pos };
+    let simDir = state.dir;
+    const simMoves = [];
+    for (let act of actions) {
+      if (act === 'turn_left') {
+        simDir = DIRS[(DIRS.indexOf(simDir)+3)%4];
+        simMoves.push({ type: 'turn_left', pos: { ...simPos }, dir: simDir });
+      } else if (act === 'turn_right') {
+        simDir = DIRS[(DIRS.indexOf(simDir)+1)%4];
+        simMoves.push({ type: 'turn_right', pos: { ...simPos }, dir: simDir });
+      } else if (act === 'move_forward') {
+        const d = MOVE[simDir];
+        const nc = simPos.col + d[0];
+        const nr = simPos.row + d[1];
+        if (nc < 0 || nc > 3 || nr < 0 || nr > 3) {
+          simMoves.push({ type: 'wall_bump', pos: { ...simPos }, dir: simDir });
+        } else {
+          const from = { ...simPos };
+          simPos.col = nc;
+          simPos.row = nr;
+          simMoves.push({ type: 'move_forward', from, to: { ...simPos }, dir: simDir });
+        }
+      }
+    }
+    executeQueue(simMoves, 0, () => {
+      state.running = false;
+      document.getElementById('btn-run').classList.remove('running');
+      document.getElementById('btn-run').textContent = '▶ RUN';
+      setStatus('IDLE');
+      logConsole(`> Finished at ${colName(state.pos.col)}${state.pos.row+1}`, 'log-info');
+      checkWin();
+    });
+  }
+  
+  function executeQueue(moves, idx, done) {
+    if (!state.running) { done(); return; }
+    if (idx >= moves.length) { done(); return; }
+    const move = moves[idx];
+    const progress = ((idx+1)/moves.length)*100;
+    document.getElementById('run-progress').style.width = progress + '%';
+    
+    if (move.type === 'move_forward') {
+      logConsole(`  move_forward() → ${colName(move.to.col)}${move.to.row+1}`, 'log-exec');
+      playActionVideo('move_forward', ACTION_DURATION, () => {
+        state.pos = { ...move.to };
+        refreshUI();
+        executeQueue(moves, idx+1, done);
+      });
+    } else if (move.type === 'turn_left') {
+      logConsole(`  turn_left() → ${DIR_NAMES[move.dir]}`, 'log-exec');
+      playActionVideo('turn_left', ACTION_DURATION*0.8, () => {
+        state.dir = move.dir;
+        refreshUI();
+        executeQueue(moves, idx+1, done);
+      });
+    } else if (move.type === 'turn_right') {
+      logConsole(`  turn_right() → ${DIR_NAMES[move.dir]}`, 'log-exec');
+      playActionVideo('turn_right', ACTION_DURATION*0.8, () => {
+        state.dir = move.dir;
+        refreshUI();
+        executeQueue(moves, idx+1, done);
+      });
+    } else if (move.type === 'wall_bump') {
+      logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
+      playActionVideo('error', 600, () => executeQueue(moves, idx+1, done));
+    }
+  }
+  
+  function checkWin() {
+    if (state.pos.col === state.goal.col && state.pos.row === state.goal.row) {
+      playActionVideo('success', 1500, () => {
+        logConsole(`✦ TARGET REACHED! Level ${state.level} complete.`, 'log-success');
+        showOverlay();
+      });
+    }
+  }
+  
+  // --------------------------------------------------------------
+  // UI HELPERS
+  // --------------------------------------------------------------
+  function colName(c) { return ['A','B','C','D'][c]; }
+  
+  function refreshUI() {
+    drawOverlay();
+    updateHUD();
+  }
+  
+  function updateHUD() {
+    document.getElementById('hdr-level').textContent = String(state.level).padStart(2,'0');
+    document.getElementById('hdr-pos').textContent = `${state.pos.col},${state.pos.row}`;
+    document.getElementById('hdr-facing').textContent = DIR_NAMES[state.dir];
+    document.getElementById('hdr-steps').textContent = state.steps;
+    document.getElementById('st-pos').textContent = `${colName(state.pos.col)}${state.pos.row+1}`;
+    document.getElementById('st-facing').textContent = DIR_NAMES[state.dir];
+    document.getElementById('st-target').textContent = `${colName(state.goal.col)}${state.goal.row+1}`;
+    document.getElementById('dir-indicator').textContent = DIR_ARROWS[state.dir];
+  }
+  
+  function randomCell() { return { col: Math.floor(Math.random()*4), row: Math.floor(Math.random()*4) }; }
+  function cellDist(a,b) { return Math.abs(a.col-b.col)+Math.abs(a.row-b.row); }
+  function generateGoal(playerPos) {
+    let goal;
+    do { goal = randomCell(); } while ((goal.col===playerPos.col && goal.row===playerPos.row) || cellDist(goal, playerPos) <= 1);
+    return goal;
+  }
+  
+  function startLevel() {
+    state.pos = { col:0, row:0 };
+    state.dir = 'N';
+    state.goal = generateGoal(state.pos);
+    state.running = false;
+    document.getElementById('run-progress').style.width = '0%';
+    refreshUI();
+    clearConsole();
+    logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
+    logConsole(`  Start: ${colName(0)}1  |  Target: ${colName(state.goal.col)}${state.goal.row+1}`, 'log-warn');
+    setStatus('IDLE');
+    playIdle();
+  }
+  
+  function nextLevel() { state.level++; hideOverlay(); startLevel(); }
+  function showOverlay() { document.getElementById('overlay').classList.add('show'); }
+  function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
+  function logConsole(msg, cls='log-line') {
+    const body = document.getElementById('console-body');
+    const div = document.createElement('div'); div.className = cls; div.textContent = msg;
+    body.appendChild(div); body.scrollTop = body.scrollHeight;
+  }
+  function clearConsole() { document.getElementById('console-body').innerHTML = ''; }
+  function setStatus(s) {
+    const el = document.getElementById('st-status');
+    el.textContent = s;
+    el.style.color = s==='RUNNING'?'var(--accent)':'var(--text)';
+  }
+  function resetCode() {
+    document.getElementById('code-input').value = "";
+    updateHighlight();
+    updateLineNumbers();
+  }
+  
+  // --------------------------------------------------------------
+  // EDITOR
+  // --------------------------------------------------------------
+  function initEditor() {
+    const ta = document.getElementById('code-input');
+    ta.value = "";
+    updateHighlight();
+    updateLineNumbers();
+    ta.addEventListener('input', () => { updateHighlight(); updateLineNumbers(); });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = ta.value.slice(0, start) + '    ' + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + 4;
+        updateHighlight(); updateLineNumbers();
+      }
+      if (e.ctrlKey && e.key === 'Enter') runCode();
+    });
+    ta.addEventListener('scroll', () => {
+      document.getElementById('code-highlight').scrollTop = ta.scrollTop;
+      document.getElementById('code-highlight').scrollLeft = ta.scrollLeft;
+      document.getElementById('line-numbers').scrollTop = ta.scrollTop;
+    });
+  }
+  function updateLineNumbers() {
+    const lines = (document.getElementById('code-input').value || "").split('\n');
+    document.getElementById('line-numbers').innerHTML = lines.map((_,i) => `<div>${i+1}</div>`).join('');
+  }
+  function highlightSyntax(code) {
+    const keywords = ['def','for','in','range','if','elif','else','while','and','or','not','return','True','False','None','pass','break','continue'];
+    const builtins = ['move_forward','turn_left','turn_right'];
+    return code
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/(#[^\n]*)/g, '<span class="cm">$1</span>')
+      .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="str">$1</span>')
+      .replace(/\b(\d+)\b/g, '<span class="num">$1</span>')
+      .replace(new RegExp(`\\b(${builtins.join('|')})\\b`,'g'), '<span class="builtin">$1</span>')
+      .replace(new RegExp(`\\b(${keywords.join('|')})\\b`,'g'), '<span class="kw">$1</span>');
+  }
+  function updateHighlight() {
+    const code = document.getElementById('code-input').value || "";
+    document.getElementById('code-highlight').innerHTML = highlightSyntax(code);
+  }
+  
+  function switchTab(tabId) {
+    const codePane = document.getElementById('code-pane');
+    const instrPane = document.getElementById('instructions-pane');
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    if (tabId === 'code') {
+      codePane.classList.remove('hidden');
+      instrPane.classList.add('hidden');
+      document.querySelector('.tab[data-tab="code"]').classList.add('active');
+    } else {
+      codePane.classList.add('hidden');
+      instrPane.classList.remove('hidden');
+      document.querySelector('.tab[data-tab="instructions"]').classList.add('active');
+      const text = `# H.U.M.A.N. Control Interface
+#
+# Functions: move_forward(), turn_left(), turn_right()
+#
+# You can create variables, loops, if-statements, and your own functions.
+# Example:
+#   def dooda():
+#       turn_left()
+#       turn_left()
+#   dooda()
+#
+# Write your program in main.py and press RUN.`;
+      document.getElementById('instructions-content').innerHTML = text.split('\n').map(l => `<div class="comment-line">${escapeHtml(l)}</div>`).join('');
+    }
+  }
+  function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+  
+  // --------------------------------------------------------------
+  // INIT
+  // --------------------------------------------------------------
+  window.addEventListener('resize', () => { resizeCanvas(); drawOverlay(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    const container = document.getElementById('grid-container');
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    
+    initEditor();
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
+    document.getElementById('btn-run').addEventListener('click', () => { if (state.running) { state.running = false; document.getElementById('btn-run').classList.remove('running'); document.getElementById('btn-run').textContent = '▶ RUN'; setStatus('IDLE'); } else runCode(); });
+    document.getElementById('btn-clear').addEventListener('click', resetCode);
+    document.getElementById('console-clear').addEventListener('click', clearConsole);
+    startLevel();
+    logConsole('  Ctrl+Enter to execute', 'log-line');
+  });
+</script>
+</body>
+</html>
