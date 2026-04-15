@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N. // Neural Protocol</title>
+<title>H.U.M.A.N.</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
 
@@ -179,7 +179,7 @@
     z-index: 10;
   }
 
-  /* Right panel unchanged */
+  /* Right panel */
   #editor-panel {
     display: grid;
     grid-template-rows: 40px 1fr 52px 140px;
@@ -509,25 +509,30 @@
   };
 
   // --------------------------------------------------------------
-  // SINGLE VIDEO, FULL GRID, PER‑CELL VIDEOS
+  // DIRECTION‑AWARE VIDEO SYSTEM
   // --------------------------------------------------------------
   const video = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
   let ctx;
 
-  function getVideoPath(col, row, action) {
-    return `videos/cell_${col}_${row}_${action}.mp4`;
+  // Helper to build video path with optional direction
+  function getVideoPath(col, row, action, dir = null) {
+    if (dir && (action === 'idle' || action === 'forward' || action === 'turn_left' || action === 'turn_right')) {
+      return `videos/cell_${col}_${row}_${action}_${dir}.mp4`;
+    } else {
+      // success / error (no direction)
+      return `videos/cell_${col}_${row}_${action}.mp4`;
+    }
   }
 
-  // Force play idle video for a specific cell
-  function playIdleForCell(col, row) {
-    const src = getVideoPath(col, row, 'idle');
+  // Play idle video for a specific cell and facing direction
+  function playIdleForCell(col, row, dir) {
+    const src = getVideoPath(col, row, 'idle', dir);
     if (video.src !== src) {
       video.pause();
       video.src = src;
       video.loop = true;
       video.load();
-      // Wait until video can play
       const playIt = () => {
         video.play().catch(e => console.log(`Idle play error for ${src}`, e));
       };
@@ -541,9 +546,9 @@
     }
   }
 
-  // Play an action video, then resume idle on a target cell
-  function playActionOnCell(actionCol, actionRow, action, duration, afterCol, afterRow, callback) {
-    const src = getVideoPath(actionCol, actionRow, action);
+  // Generic action player: plays a video once, then resumes idle on a target cell with a target direction
+  function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
+    const src = getVideoPath(actionCol, actionRow, action, actionDir);
     video.pause();
     video.loop = false;
     video.src = src;
@@ -562,8 +567,8 @@
     }
     const onEnd = () => {
       video.removeEventListener('ended', onEnd);
-      // Resume idle on the new cell
-      playIdleForCell(afterCol, afterRow);
+      // Resume idle on the new cell/direction
+      playIdleForCell(afterCol, afterRow, afterDir);
       if (callback) callback();
     };
     video.addEventListener('ended', onEnd);
@@ -571,20 +576,32 @@
     setTimeout(() => {
       if (!video.loop && !video.ended) {
         video.removeEventListener('ended', onEnd);
-        playIdleForCell(afterCol, afterRow);
+        playIdleForCell(afterCol, afterRow, afterDir);
         if (callback) callback();
       }
     }, duration + 500);
   }
 
-  // Turn action (same cell)
-  function playTurnAction(col, row, action, duration, callback) {
-    playActionOnCell(col, row, action, duration, col, row, callback);
+  // Convenience wrappers
+  function playMoveForward(fromCol, fromRow, dir, toCol, toRow, duration, callback) {
+    // forward action: same direction as movement
+    playAction(fromCol, fromRow, 'forward', dir, duration, toCol, toRow, dir, callback);
   }
 
-  // Move forward: play forward on source, then idle on destination
-  function playMoveForward(fromCol, fromRow, toCol, toRow, duration, callback) {
-    playActionOnCell(fromCol, fromRow, 'forward', duration, toCol, toRow, callback);
+  function playTurnLeft(col, row, oldDir, newDir, duration, callback) {
+    playAction(col, row, 'turn_left', oldDir, duration, col, row, newDir, callback);
+  }
+
+  function playTurnRight(col, row, oldDir, newDir, duration, callback) {
+    playAction(col, row, 'turn_right', oldDir, duration, col, row, newDir, callback);
+  }
+
+  function playSuccess(col, row, duration, callback) {
+    playAction(col, row, 'success', null, duration, col, row, state.dir, callback);
+  }
+
+  function playError(col, row, duration, callback) {
+    playAction(col, row, 'error', null, duration, col, row, state.dir, callback);
   }
 
   // --------------------------------------------------------------
@@ -636,7 +653,7 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // --------------------------------------------------------------
-  // INTERPRETER (full Python-like, supports loops, vars, functions)
+  // INTERPRETER (unchanged, supports variables, loops, functions)
   // --------------------------------------------------------------
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
@@ -807,9 +824,9 @@
   }
   
   // --------------------------------------------------------------
-  // EXECUTION ENGINE
+  // EXECUTION ENGINE WITH DIRECTION‑AWARE VIDEOS
   // --------------------------------------------------------------
-  const ACTION_DURATION = 800; // adjust to your video lengths
+  const ACTION_DURATION = 800; // adjust to match your video lengths
 
   function runCode() {
     if (state.running) return;
@@ -820,7 +837,7 @@
     if (errors.length) {
       errors.forEach(e => logConsole('⚠ ' + e, 'log-error'));
       logConsole('Execution halted.', 'log-warn');
-      playActionOnCell(state.pos.col, state.pos.row, 'error', 1000, state.pos.col, state.pos.row, null);
+      playError(state.pos.col, state.pos.row, 1000, null);
       return;
     }
     if (actions.length === 0) { logConsole('> No actions found.', 'log-warn'); return; }
@@ -831,17 +848,19 @@
     document.getElementById('btn-run').textContent = '■ STOP';
     setStatus('RUNNING');
     
-    // Simulate movement
+    // Simulate movement and turns to build the queue
     const simPos = { ...state.pos };
     let simDir = state.dir;
     const simMoves = [];
     for (let act of actions) {
       if (act === 'turn_left') {
-        simDir = DIRS[(DIRS.indexOf(simDir)+3)%4];
-        simMoves.push({ type: 'turn_left', pos: { ...simPos }, dir: simDir });
+        const newDir = DIRS[(DIRS.indexOf(simDir)+3)%4];
+        simMoves.push({ type: 'turn_left', pos: { ...simPos }, oldDir: simDir, newDir: newDir });
+        simDir = newDir;
       } else if (act === 'turn_right') {
-        simDir = DIRS[(DIRS.indexOf(simDir)+1)%4];
-        simMoves.push({ type: 'turn_right', pos: { ...simPos }, dir: simDir });
+        const newDir = DIRS[(DIRS.indexOf(simDir)+1)%4];
+        simMoves.push({ type: 'turn_right', pos: { ...simPos }, oldDir: simDir, newDir: newDir });
+        simDir = newDir;
       } else if (act === 'move_forward') {
         const d = MOVE[simDir];
         const nc = simPos.col + d[0];
@@ -875,28 +894,29 @@
     
     if (move.type === 'move_forward') {
       logConsole(`  move_forward() → ${colName(move.to.col)}${move.to.row+1}`, 'log-exec');
-      playMoveForward(move.from.col, move.from.row, move.to.col, move.to.row, ACTION_DURATION, () => {
+      playMoveForward(move.from.col, move.from.row, move.dir, move.to.col, move.to.row, ACTION_DURATION, () => {
         state.pos = { ...move.to };
+        // direction stays the same
         refreshUI();
         executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'turn_left') {
-      logConsole(`  turn_left() → ${DIR_NAMES[move.dir]}`, 'log-exec');
-      playTurnAction(move.pos.col, move.pos.row, 'turn_left', ACTION_DURATION * 0.7, () => {
-        state.dir = move.dir;
+      logConsole(`  turn_left() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
+      playTurnLeft(move.pos.col, move.pos.row, move.oldDir, move.newDir, ACTION_DURATION * 0.7, () => {
+        state.dir = move.newDir;
         refreshUI();
         executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'turn_right') {
-      logConsole(`  turn_right() → ${DIR_NAMES[move.dir]}`, 'log-exec');
-      playTurnAction(move.pos.col, move.pos.row, 'turn_right', ACTION_DURATION * 0.7, () => {
-        state.dir = move.dir;
+      logConsole(`  turn_right() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
+      playTurnRight(move.pos.col, move.pos.row, move.oldDir, move.newDir, ACTION_DURATION * 0.7, () => {
+        state.dir = move.newDir;
         refreshUI();
         executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'wall_bump') {
       logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
-      playActionOnCell(move.pos.col, move.pos.row, 'error', 600, move.pos.col, move.pos.row, () => {
+      playError(move.pos.col, move.pos.row, 600, () => {
         executeQueue(moves, idx+1, done);
       });
     }
@@ -904,7 +924,7 @@
   
   function checkWin() {
     if (state.pos.col === state.goal.col && state.pos.row === state.goal.row) {
-      playActionOnCell(state.pos.col, state.pos.row, 'success', 1500, state.pos.col, state.pos.row, () => {
+      playSuccess(state.pos.col, state.pos.row, 1500, () => {
         logConsole(`✦ TARGET REACHED! Level ${state.level} complete.`, 'log-success');
         showOverlay();
       });
@@ -933,8 +953,7 @@
     logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
     logConsole(`  Start: ${colName(0)}1  |  Target: ${colName(state.goal.col)}${state.goal.row+1}`, 'log-warn');
     setStatus('IDLE');
-    // Play idle video for starting cell
-    playIdleForCell(state.pos.col, state.pos.row);
+    playIdleForCell(state.pos.col, state.pos.row, state.dir);
   }
   
   function nextLevel() { state.level++; hideOverlay(); startLevel(); }
