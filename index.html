@@ -748,12 +748,6 @@
 # Built-in: current_position (returns [col, row])
 # Lists support .append() and .pop()
 #
-# Example BFS:
-#   queue = []
-#   queue.append([0,0,0])
-#   while len(queue) > 0:
-#       state = queue.pop(0)
-#       ...
 # Write your program in main.py and press RUN.`;
       document.getElementById('instructions-content').innerHTML = text.split('\n').map(l => `<div class="comment-line">${escapeHtml(l)}</div>`).join('');
     }
