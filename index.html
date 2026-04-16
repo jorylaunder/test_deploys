@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
-<!-- Favicon as JPG -->
+<title>H.U.M.A.N. // Neural Protocol</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -230,6 +229,7 @@
     position: relative;
     overflow: hidden;
     background: #0a0c0f;
+    height: 100%;
   }
   .editor-pane {
     position: absolute;
@@ -240,11 +240,14 @@
     overflow: auto;
     background: #0a0c0f;
   }
-  .editor-pane.hidden { display: none; }
+  .editor-pane.hidden {
+    display: none;
+  }
 
   .code-editor-container {
     position: relative;
     height: 100%;
+    overflow: hidden;
   }
   #line-numbers {
     position: absolute;
@@ -279,8 +282,7 @@
     background: transparent;
     white-space: pre-wrap;
     word-break: break-word;
-    overflow-x: auto;
-    overflow-y: auto;
+    overflow: auto;
   }
   #code-input {
     color: transparent;
@@ -501,7 +503,7 @@
 
 <script>
   // --------------------------------------------------------------
-  // GAME STATE (unchanged)
+  // GAME STATE
   // --------------------------------------------------------------
   const DIRS = ['N','E','S','W'];
   const DIR_ARROWS = { N:'↑', E:'→', S:'↓', W:'←' };
@@ -518,7 +520,7 @@
   };
 
   // --------------------------------------------------------------
-  // DIRECTION‑AWARE VIDEO SYSTEM (same as before)
+  // DIRECTION‑AWARE VIDEO SYSTEM (unchanged)
   // --------------------------------------------------------------
   const video = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
@@ -605,7 +607,7 @@
   }
 
   // --------------------------------------------------------------
-  // GOAL OVERLAY (only orange ring)
+  // GOAL OVERLAY
   // --------------------------------------------------------------
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
@@ -652,16 +654,11 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // --------------------------------------------------------------
-  // ENHANCED INTERPRETER with lists and current_position
+  // ENHANCED INTERPRETER WITH VARIABLE INDEXING
   // --------------------------------------------------------------
-  // We add a global built‑in variable 'current_position' that returns [col, row].
-  // Lists: [1,2,3], indexing list[i], assignment to list elements.
-
   function evaluateExpression(expr, scope) {
-    // This is a simplified evaluator that handles lists and indexing.
-    // For complex expressions, we use a safer approach.
     expr = expr.trim();
-    // Replace variable names with their values from scope (including current_position)
+    // Replace variable names with their values from scope, handling current_position specially
     let replaced = expr.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
       if (match === 'True') return 'true';
       if (match === 'False') return 'false';
@@ -678,17 +675,7 @@
       }
       return match;
     });
-    // Now evaluate using Function, but only after sanitizing
-    // Allow list syntax and indexing
-    if (!/^[\d\s\+\-\*\/\%\(\)\.\!\=\<\>\&\|\[\]\{\}\:\,truefalsenull]+$/i.test(replaced)) {
-      // If it contains list indexing, we need to handle it differently.
-      // For safety, we'll try to parse as JS.
-      try {
-        return new Function('return (' + replaced + ')')();
-      } catch(e) {
-        return 0;
-      }
-    }
+    // Now evaluate using Function (safe because we control the expression)
     try {
       return new Function('return (' + replaced + ')')();
     } catch(e) {
@@ -696,13 +683,18 @@
     }
   }
 
-  // Assignment now supports list indexing: list[i] = value
-  function assignVariable(varName, value, scope) {
-    // Check if it's an indexed assignment like 'myList[0]'
-    const indexMatch = varName.match(/^(\w+)\[(\d+)\]$/);
+  // Assignment handles both simple variables and indexed assignments like arr[0] = 5
+  function assignVariable(left, value, scope) {
+    // Check for indexed assignment: name[index]
+    const indexMatch = left.match(/^(\w+)\[([^\]]+)\]$/);
     if (indexMatch) {
       const listName = indexMatch[1];
-      const idx = parseInt(indexMatch[2]);
+      const indexExpr = indexMatch[2];
+      // Evaluate the index expression
+      let idx = evaluateExpression(indexExpr, scope);
+      if (typeof idx !== 'number' || isNaN(idx)) {
+        return false;
+      }
       if (scope[listName] && Array.isArray(scope[listName])) {
         scope[listName][idx] = value;
         return true;
@@ -710,7 +702,8 @@
         return false;
       }
     } else {
-      scope[varName] = value;
+      // Simple variable assignment
+      scope[left] = value;
       return true;
     }
   }
@@ -725,7 +718,7 @@
       let stripped = line.trimStart();
       if (!stripped || stripped.startsWith('#')) { i++; continue; }
       
-      // def ... (unchanged)
+      // Function definition
       const defMatch = stripped.match(/^def\s+(\w+)\s*\(\)\s*:/);
       if (defMatch) {
         const funcName = defMatch[1];
@@ -745,7 +738,7 @@
         continue;
       }
       
-      // function call
+      // User function call
       const callMatch = stripped.match(/^(\w+)\(\)$/);
       if (callMatch && !['move_forward','turn_left','turn_right'].includes(callMatch[1])) {
         const funcName = callMatch[1];
@@ -846,11 +839,11 @@
         continue;
       }
       
-      // assignment (including list indexing)
-      const assignMatch = stripped.match(/^(\w+(?:\[\d+\])?)\s*=\s*(.+)$/);
+      // assignment (supports indexed left side)
+      const assignMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(\[[^\]]+\])?)\s*=\s*(.+)$/);
       if (assignMatch) {
         const left = assignMatch[1];
-        const rightExpr = assignMatch[2];
+        const rightExpr = assignMatch[3];
         const value = evaluateExpression(rightExpr, scope);
         assignVariable(left, value, scope);
         i++;
@@ -861,11 +854,7 @@
       if (stripped === 'move_forward()') { actions.push('move_forward'); i++; continue; }
       if (stripped === 'turn_left()') { actions.push('turn_left'); i++; continue; }
       if (stripped === 'turn_right()') { actions.push('turn_right'); i++; continue; }
-      if (stripped.startsWith('print(')) {
-        // print is allowed but ignored (or could log to console)
-        i++;
-        continue;
-      }
+      if (stripped.startsWith('print(')) { i++; continue; }
       if (stripped === 'pass') { i++; continue; }
       if (stripped !== '') errors.push(`Syntax error: "${stripped.substring(0,50)}"`);
       i++;
@@ -1036,7 +1025,7 @@
   }
   
   // --------------------------------------------------------------
-  // EDITOR & SYNTAX HIGHLIGHT (unchanged)
+  // EDITOR & SYNTAX HIGHLIGHT
   // --------------------------------------------------------------
   function initEditor() {
     const ta = document.getElementById('code-input');
@@ -1114,8 +1103,7 @@
 #
 # Built-in variable: current_position  (returns [col, row], e.g., [0,0] for A1)
 #
-# You can create variables, loops, if-statements, and your own functions.
-# Lists are supported: myList = [1,2,3]; myList[0] = 10
+# Lists are fully supported: create with [1,2,3], index with var[i], assign to list elements.
 #
 # Example:
 #   pos = current_position
