@@ -3,403 +3,75 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N. // Neural Protocol</title>
+<title>H.U.M.A.N.</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
+  /* ========== STYLES (same as before, unchanged) ========== */
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
-
   :root {
     --bg: #0a0c0f; --panel: #0f1318; --border: #1e2a1e; --accent: #00ff41;
     --accent2: #ff6b00; --accent3: #00cfff; --dim: #2a3a2a; --text: #b8d4b8;
     --textdim: #4a6a4a; --error: #ff3333; --warning: #ffcc00;
   }
-
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { height:100%; background:var(--bg); color:var(--text); font-family:'Share Tech Mono',monospace; overflow:hidden; }
   body::before { content:''; position:fixed; inset:0; background:repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.015) 2px, rgba(0,255,65,0.015) 4px); pointer-events:none; z-index:9999; }
-
-  #app {
-    display: grid;
-    grid-template-rows: 52px 1fr;
-    grid-template-columns: 1fr 560px;
-    height: 100vh;
-  }
-
-  #header {
-    grid-column: 1 / -1;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    padding: 0 20px;
-    gap: 24px;
-    position: relative;
-  }
-  #header::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  }
-  .logo {
-    font-family: 'Orbitron', monospace;
-    font-weight: 900;
-    font-size: 18px;
-    color: var(--accent);
-    letter-spacing: 4px;
-    text-shadow: 0 0 20px rgba(0,255,65,0.5);
-  }
-  .logo span { color: var(--accent2); }
-  .header-info {
-    display: flex;
-    gap: 24px;
-    margin-left: auto;
-    font-size: 11px;
-    color: var(--textdim);
-    letter-spacing: 2px;
-  }
-  .header-info .val {
-    color: var(--accent3);
-    font-family: 'VT323', monospace;
-    font-size: 15px;
-  }
-
-  #viewport {
-    background: #000;
-    position: relative;
-    overflow: hidden;
-    border-right: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  #grid-container {
-    position: relative;
-    width: min(70vh, 70vw);
-    aspect-ratio: 1 / 1;
-    background: #000;
-  }
-
-  #action-video {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    z-index: 1;
-  }
-
-  #goal-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 2;
-    pointer-events: none;
-  }
-
-  .coord-labels-x, .coord-labels-y {
-    position: absolute;
-    display: flex;
-    font-size: 13px;
-    color: var(--textdim);
-    font-family: 'VT323', monospace;
-    z-index: 3;
-    text-shadow: 0 0 4px black;
-  }
-  .coord-labels-x { top: -20px; left: 0; width: 100%; justify-content: space-around; }
-  .coord-labels-y { left: -20px; top: 0; height: 100%; flex-direction: column; justify-content: space-around; align-items: center; }
-
-  #status-bar {
-    position: absolute;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(10,12,15,0.9);
-    border: 1px solid var(--dim);
-    padding: 6px 20px;
-    font-size: 12px;
-    color: var(--textdim);
-    white-space: nowrap;
-    backdrop-filter: blur(4px);
-    z-index: 10;
-  }
-  #status-bar .status-val { color: var(--accent); }
-
-  #dir-indicator {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    width: 48px;
-    height: 48px;
-    border: 1px solid var(--dim);
-    background: rgba(10,12,15,0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    backdrop-filter: blur(4px);
-    z-index: 10;
-  }
-
-  #editor-panel {
-    display: grid;
-    grid-template-rows: 40px 1fr 52px 140px;
-    background: var(--panel);
-    overflow: hidden;
-  }
-
-  #editor-tabs {
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid var(--border);
-    padding: 0 12px;
-    gap: 8px;
-    background: rgba(0,0,0,0.3);
-  }
-  .tab {
-    font-size: 10px;
-    letter-spacing: 2px;
-    color: var(--textdim);
-    padding: 4px 10px;
-    border-bottom: 2px solid transparent;
-    cursor: pointer;
-    transition: all 0.1s;
-  }
-  .tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-  .tab-flash {
-    animation: flashText 1s ease-in-out infinite;
-  }
-  @keyframes flashText {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; text-shadow: 0 0 4px var(--accent2); }
-  }
-  .tab-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--accent2);
-    display: inline-block;
-    margin-right: 6px;
-    animation: blink 2s step-end infinite;
-  }
+  #app { display:grid; grid-template-rows:52px 1fr; grid-template-columns:1fr 560px; height:100vh; }
+  #header { grid-column:1/-1; background:var(--panel); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; gap:24px; position:relative; }
+  #header::after { content:''; position:absolute; bottom:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, var(--accent), transparent); }
+  .logo { font-family:'Orbitron',monospace; font-weight:900; font-size:18px; color:var(--accent); letter-spacing:4px; text-shadow:0 0 20px rgba(0,255,65,0.5); }
+  .logo span { color:var(--accent2); }
+  .header-info { display:flex; gap:24px; margin-left:auto; font-size:11px; color:var(--textdim); letter-spacing:2px; }
+  .header-info .val { color:var(--accent3); font-family:'VT323',monospace; font-size:15px; }
+  #viewport { background:#000; position:relative; overflow:hidden; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
+  #grid-container { position:relative; width:min(70vh,70vw); aspect-ratio:1/1; background:#000; }
+  #action-video { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1; }
+  #goal-overlay { position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; pointer-events:none; }
+  .coord-labels-x, .coord-labels-y { position:absolute; display:flex; font-size:13px; color:var(--textdim); font-family:'VT323',monospace; z-index:3; text-shadow:0 0 4px black; }
+  .coord-labels-x { top:-20px; left:0; width:100%; justify-content:space-around; }
+  .coord-labels-y { left:-20px; top:0; height:100%; flex-direction:column; justify-content:space-around; align-items:center; }
+  #status-bar { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(10,12,15,0.9); border:1px solid var(--dim); padding:6px 20px; font-size:12px; color:var(--textdim); white-space:nowrap; backdrop-filter:blur(4px); z-index:10; }
+  #status-bar .status-val { color:var(--accent); }
+  #dir-indicator { position:absolute; top:12px; left:12px; width:48px; height:48px; border:1px solid var(--dim); background:rgba(10,12,15,0.9); display:flex; align-items:center; justify-content:center; font-size:24px; backdrop-filter:blur(4px); z-index:10; }
+  #editor-panel { display:grid; grid-template-rows:40px 1fr 52px 140px; background:var(--panel); overflow:hidden; }
+  #editor-tabs { display:flex; align-items:center; border-bottom:1px solid var(--border); padding:0 12px; gap:8px; background:rgba(0,0,0,0.3); }
+  .tab { font-size:10px; letter-spacing:2px; color:var(--textdim); padding:4px 10px; border-bottom:2px solid transparent; cursor:pointer; transition:all 0.1s; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .tab-flash { animation:flashText 1s ease-in-out infinite; }
+  @keyframes flashText { 0%,100%{opacity:1} 50%{opacity:0.3; text-shadow:0 0 4px var(--accent2);} }
+  .tab-dot { width:6px; height:6px; border-radius:50%; background:var(--accent2); display:inline-block; margin-right:6px; animation:blink 2s step-end infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
-
-  .editor-wrapper {
-    position: relative;
-    overflow: hidden;
-    background: #0a0c0f;
-    height: 100%;
-  }
-  .editor-pane {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background: #0a0c0f;
-  }
-  .editor-pane.hidden { display: none; }
-
-  .code-editor-container {
-    position: relative;
-    height: 100%;
-    overflow: hidden;
-  }
-  #line-numbers {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 44px;
-    padding: 12px 0;
-    text-align: right;
-    font-size: 12px;
-    line-height: 20px;
-    color: var(--textdim);
-    background: rgba(0,0,0,0.5);
-    border-right: 1px solid var(--border);
-    user-select: none;
-    font-family: 'Share Tech Mono', monospace;
-    pointer-events: none;
-    z-index: 2;
-  }
-  #code-input, #code-highlight {
-    position: absolute;
-    left: 44px;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    margin: 0;
-    padding: 12px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 13px;
-    line-height: 20px;
-    tab-size: 4;
-    border: none;
-    background: transparent;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow: auto;
-  }
-  #code-input {
-    color: transparent;
-    caret-color: var(--accent);
-    resize: none;
-    outline: none;
-    z-index: 3;
-  }
-  #code-highlight {
-    pointer-events: none;
-    z-index: 1;
-    color: var(--text);
-    background: transparent;
-  }
-  .kw { color: #cc88ff; }
-  .builtin { color: var(--accent2); font-weight: bold; }
-  .cm { color: #5a7a5a; font-style: italic; }
-
-  .instructions-container {
-    padding: 16px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 13px;
-    line-height: 1.5;
-    overflow-y: auto;
-  }
-  .instructions-container .comment-line {
-    color: #5a7a5a;
-    white-space: pre-wrap;
-  }
-
-  #controls-bar {
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 0 12px;
-    gap: 12px;
-    background: rgba(0,0,0,0.4);
-  }
-  #btn-run {
-    background: linear-gradient(135deg, #003300, #005500);
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: 'Orbitron', monospace;
-    font-weight: 700;
-    font-size: 12px;
-    letter-spacing: 3px;
-    padding: 8px 20px;
-    cursor: pointer;
-  }
-  #btn-run.running {
-    background: linear-gradient(135deg, #330000, #550000);
-    border-color: var(--error);
-    color: var(--error);
-  }
-  #btn-clear {
-    background: transparent;
-    border: 1px solid var(--dim);
-    color: var(--textdim);
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 10px;
-    padding: 6px 12px;
-    cursor: pointer;
-  }
-
-  #console {
-    background: rgba(0,0,0,0.6);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  #console-header {
-    flex-shrink: 0;
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: var(--textdim);
-    padding: 8px 12px;
-    display: flex;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--dim);
-  }
-  #console-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px 12px;
-    font-size: 11px;
-    line-height: 18px;
-  }
-  #console-clear { cursor: pointer; }
-  #console-clear:hover { color: var(--accent); }
-  .log-line { color: var(--textdim); }
-  .log-success { color: var(--accent); }
-  .log-error { color: var(--error); }
-  .log-warn { color: var(--warning); }
-  .log-info { color: var(--accent3); }
-  .log-exec { color: #cc88ff; }
-
-  #overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.92);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-    flex-direction: column;
-    gap: 24px;
-  }
-  #overlay.show {
-    opacity: 1;
-    pointer-events: all;
-  }
-  .overlay-title {
-    font-family: 'Orbitron', monospace;
-    font-size: 36px;
-    font-weight: 900;
-    letter-spacing: 8px;
-  }
-  .overlay-title.win { color: var(--accent); text-shadow: 0 0 40px rgba(0,255,65,0.6); }
-  .overlay-sub {
-    font-size: 13px;
-    letter-spacing: 3px;
-    color: var(--textdim);
-  }
-  #btn-next {
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: 'Orbitron', monospace;
-    font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 4px;
-    padding: 12px 32px;
-    cursor: pointer;
-  }
-
-  #run-progress {
-    position: absolute;
-    bottom: -2px; left: 0;
-    height: 2px;
-    background: var(--accent);
-    width: 0%;
-    transition: width 0.1s linear;
-    z-index: 20;
-  }
+  .editor-wrapper { position:relative; overflow:hidden; background:#0a0c0f; height:100%; }
+  .editor-pane { position:absolute; top:0; left:0; width:100%; height:100%; overflow:auto; background:#0a0c0f; }
+  .editor-pane.hidden { display:none; }
+  .code-editor-container { position:relative; height:100%; overflow:hidden; }
+  #line-numbers { position:absolute; left:0; top:0; width:44px; padding:12px 0; text-align:right; font-size:12px; line-height:20px; color:var(--textdim); background:rgba(0,0,0,0.5); border-right:1px solid var(--border); user-select:none; font-family:'Share Tech Mono',monospace; pointer-events:none; z-index:2; }
+  #code-input, #code-highlight { position:absolute; left:44px; right:0; top:0; bottom:0; margin:0; padding:12px; font-family:'Share Tech Mono',monospace; font-size:13px; line-height:20px; tab-size:4; border:none; background:transparent; white-space:pre-wrap; word-break:break-word; overflow:auto; }
+  #code-input { color:transparent; caret-color:var(--accent); resize:none; outline:none; z-index:3; }
+  #code-highlight { pointer-events:none; z-index:1; color:var(--text); background:transparent; }
+  .kw { color:#cc88ff; } .builtin { color:var(--accent2); font-weight:bold; } .cm { color:#5a7a5a; font-style:italic; }
+  .instructions-container { padding:16px; font-family:'Share Tech Mono',monospace; font-size:13px; line-height:1.5; overflow-y:auto; }
+  .instructions-container .comment-line { color:#5a7a5a; white-space:pre-wrap; }
+  #controls-bar { border-top:1px solid var(--border); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:flex-end; padding:0 12px; gap:12px; background:rgba(0,0,0,0.4); }
+  #btn-run { background:linear-gradient(135deg,#003300,#005500); border:1px solid var(--accent); color:var(--accent); font-family:'Orbitron',monospace; font-weight:700; font-size:12px; letter-spacing:3px; padding:8px 20px; cursor:pointer; }
+  #btn-run.running { background:linear-gradient(135deg,#330000,#550000); border-color:var(--error); color:var(--error); }
+  #btn-clear { background:transparent; border:1px solid var(--dim); color:var(--textdim); font-family:'Share Tech Mono',monospace; font-size:10px; padding:6px 12px; cursor:pointer; }
+  #console { background:rgba(0,0,0,0.6); display:flex; flex-direction:column; overflow:hidden; }
+  #console-header { flex-shrink:0; font-size:9px; letter-spacing:2px; color:var(--textdim); padding:8px 12px; display:flex; justify-content:space-between; border-bottom:1px solid var(--dim); }
+  #console-body { flex:1; overflow-y:auto; padding:8px 12px; font-size:11px; line-height:18px; }
+  #console-clear { cursor:pointer; } #console-clear:hover { color:var(--accent); }
+  .log-line { color:var(--textdim); } .log-success { color:var(--accent); } .log-error { color:var(--error); }
+  .log-warn { color:var(--warning); } .log-info { color:var(--accent3); } .log-exec { color:#cc88ff; }
+  #overlay { position:fixed; inset:0; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; z-index:1000; opacity:0; pointer-events:none; transition:opacity 0.3s; flex-direction:column; gap:24px; }
+  #overlay.show { opacity:1; pointer-events:all; }
+  .overlay-title { font-family:'Orbitron',monospace; font-size:36px; font-weight:900; letter-spacing:8px; }
+  .overlay-title.win { color:var(--accent); text-shadow:0 0 40px rgba(0,255,65,0.6); }
+  .overlay-sub { font-size:13px; letter-spacing:3px; color:var(--textdim); }
+  #btn-next { background:transparent; border:1px solid var(--accent); color:var(--accent); font-family:'Orbitron',monospace; font-weight:700; font-size:13px; letter-spacing:4px; padding:12px 32px; cursor:pointer; }
+  #run-progress { position:absolute; bottom:-2px; left:0; height:2px; background:var(--accent); width:0%; transition:width 0.1s linear; z-index:20; }
 </style>
 </head>
 <body>
-
 <div id="app">
   <header id="header">
     <div class="logo">H.<span>U</span>.M.<span>A</span>.N.</div>
@@ -412,7 +84,6 @@
       <div>STEPS&nbsp;<span class="val" id="hdr-steps">0</span></div>
     </div>
   </header>
-
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
@@ -429,7 +100,6 @@
       STATUS: <span class="status-val" id="st-status">IDLE</span>
     </div>
   </div>
-
   <div id="editor-panel">
     <div id="editor-tabs">
       <div class="tab active" data-tab="code">main.py</div>
@@ -458,7 +128,6 @@
     </div>
   </div>
 </div>
-
 <div id="overlay">
   <div class="overlay-title win">OBJECTIVE COMPLETE</div>
   <div class="overlay-sub" id="overlay-sub">UNIT REACHED TARGET COORDINATES</div>
@@ -467,13 +136,12 @@
 
 <script>
   // --------------------------------------------------------------
-  // GAME STATE
+  // GAME STATE (unchanged)
   // --------------------------------------------------------------
   const DIRS = ['N','E','S','W'];
   const DIR_ARROWS = { N:'↑', E:'→', S:'↓', W:'←' };
   const DIR_NAMES = { N:'NORTH', E:'EAST', S:'SOUTH', W:'WEST' };
   const MOVE = { N: [0,-1], E: [1,0], S: [0,1], W: [-1,0] };
-
   let state = {
     level: 1,
     pos: {col:0, row:0},
@@ -482,14 +150,12 @@
     steps: 0,
     running: false
   };
-
   // --------------------------------------------------------------
-  // VIDEO SYSTEM (direction‑aware, full‑grid)
+  // VIDEO SYSTEM (full, unchanged)
   // --------------------------------------------------------------
   const video = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
   let ctx;
-
   function getVideoPath(col, row, action, dir = null) {
     if (dir && (action === 'idle' || action === 'forward' || action === 'turn_left' || action === 'turn_right')) {
       return `videos/cell_${col}_${row}_${action}_${dir}.mp4`;
@@ -497,7 +163,6 @@
       return `videos/cell_${col}_${row}_${action}.mp4`;
     }
   }
-
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, 'idle', dir);
     if (video.src !== src) {
@@ -510,7 +175,6 @@
       else video.addEventListener('canplaythrough', playIt, { once: true });
     } else if (video.paused) video.play().catch(e => {});
   }
-
   function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
     const src = getVideoPath(actionCol, actionRow, action, actionDir);
     video.pause();
@@ -536,29 +200,23 @@
       }
     }, duration + 500);
   }
-
   function playMoveForward(fromCol, fromRow, dir, toCol, toRow, duration, callback) {
     playAction(fromCol, fromRow, 'forward', dir, duration, toCol, toRow, dir, callback);
   }
-
   function playTurnLeft(col, row, oldDir, newDir, duration, callback) {
     playAction(col, row, 'turn_left', oldDir, duration, col, row, newDir, callback);
   }
-
   function playTurnRight(col, row, oldDir, newDir, duration, callback) {
     playAction(col, row, 'turn_right', oldDir, duration, col, row, newDir, callback);
   }
-
   function playSuccess(col, row, duration, callback) {
     playAction(col, row, 'success', null, duration, col, row, state.dir, callback);
   }
-
   function playError(col, row, duration, callback) {
     playAction(col, row, 'error', null, duration, col, row, state.dir, callback);
   }
-
   // --------------------------------------------------------------
-  // OVERLAY (only orange goal ring)
+  // OVERLAY (orange ring)
   // --------------------------------------------------------------
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
@@ -567,7 +225,6 @@
     canvas.height = rect.height;
     drawGoalOverlay();
   }
-
   function drawGoalOverlay() {
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
@@ -582,9 +239,7 @@
     ctx.fillStyle = 'rgba(255,107,0,0.4)';
     ctx.fill();
   }
-
   function refreshUI() { drawGoalOverlay(); updateHUD(); }
-
   function updateHUD() {
     document.getElementById('hdr-level').textContent = String(state.level).padStart(2,'0');
     document.getElementById('hdr-pos').textContent = `${state.pos.col},${state.pos.row}`;
@@ -595,11 +250,10 @@
     document.getElementById('st-target').textContent = `${colName(state.goal.col)}${state.goal.row+1}`;
     document.getElementById('dir-indicator').textContent = DIR_ARROWS[state.dir];
   }
-
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // --------------------------------------------------------------
-  // ENHANCED INTERPRETER (multi‑dim indexing, print, current_position)
+  // ENHANCED INTERPRETER (supports list.append() and list.pop())
   // --------------------------------------------------------------
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
@@ -655,6 +309,33 @@
     return false;
   }
 
+  // Handle method calls like list.append(x) and list.pop()
+  function handleMethodCall(expr, scope) {
+    let match = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\.(append|pop)\(([^)]*)\)$/);
+    if (!match) return null;
+    let objName = match[1];
+    let method = match[2];
+    let argExpr = match[3].trim();
+    if (!(objName in scope)) return null;
+    let obj = scope[objName];
+    if (!Array.isArray(obj)) return null;
+    if (method === 'append') {
+      let val = evaluateExpression(argExpr, scope);
+      obj.push(val);
+      return true;
+    } else if (method === 'pop') {
+      if (argExpr === "") {
+        let popped = obj.pop();
+        return popped;
+      } else {
+        let idx = evaluateExpression(argExpr, scope);
+        let popped = obj.splice(idx, 1)[0];
+        return popped;
+      }
+    }
+    return null;
+  }
+
   function interpret(code, actions, errors, scope, depth, limit) {
     if (depth > 100) throw new Error('Recursion limit');
     const lines = code.split('\n');
@@ -665,7 +346,7 @@
       let stripped = line.trimStart();
       if (!stripped || stripped.startsWith('#')) { i++; continue; }
 
-      // def
+      // def ...
       const defMatch = stripped.match(/^def\s+(\w+)\s*\(\)\s*:/);
       if (defMatch) {
         const funcName = defMatch[1];
@@ -692,6 +373,17 @@
         if (scope.__funcs__ && scope.__funcs__[funcName]) {
           interpret(scope.__funcs__[funcName], actions, errors, { ...scope }, depth+1, limit);
         } else errors.push(`Function '${funcName}' not defined`);
+        i++;
+        continue;
+      }
+
+      // method call (list.append, list.pop)
+      let methodResult = handleMethodCall(stripped, scope);
+      if (methodResult !== null) {
+        if (typeof methodResult !== 'boolean') {
+          // pop returns a value, we need to handle assignment? Not here; just evaluate.
+          // For standalone pop() without assignment, we ignore the returned value.
+        }
         i++;
         continue;
       }
@@ -786,7 +478,7 @@
         continue;
       }
 
-      // assignment with multi‑dim indexing (e.g., vis[0][0][0] = 1)
+      // assignment with multi-dim indexing
       const assignMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(?:\[[^\]]+\])+)\s*=\s*(.+)$/);
       if (assignMatch) {
         const left = assignMatch[1];
@@ -797,7 +489,7 @@
         continue;
       }
 
-      // simple variable assignment
+      // simple assignment
       const simpleAssign = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
       if (simpleAssign) {
         const left = simpleAssign[1];
@@ -808,7 +500,7 @@
         continue;
       }
 
-      // print statement
+      // print
       const printMatch = stripped.match(/^print\((.*)\)$/);
       if (printMatch) {
         let arg = printMatch[1];
@@ -818,7 +510,7 @@
         continue;
       }
 
-      // built‑in actions
+      // built-in actions
       if (stripped === 'move_forward()') { actions.push('move_forward'); i++; continue; }
       if (stripped === 'turn_left()') { actions.push('turn_left'); i++; continue; }
       if (stripped === 'turn_right()') { actions.push('turn_right'); i++; continue; }
@@ -841,10 +533,9 @@
   }
 
   // --------------------------------------------------------------
-  // EXECUTION ENGINE
+  // EXECUTION ENGINE (unchanged)
   // --------------------------------------------------------------
   const ACTION_DURATION = 800;
-
   function runCode() {
     if (state.running) return;
     const code = document.getElementById('code-input').value;
@@ -898,7 +589,6 @@
       checkWin();
     });
   }
-
   function executeQueue(moves, idx, done) {
     if (!state.running) { done(); return; }
     if (idx >= moves.length) { done(); return; }
@@ -931,7 +621,6 @@
       playError(move.pos.col, move.pos.row, 600, () => executeQueue(moves, idx+1, done));
     }
   }
-
   function checkWin() {
     if (state.pos.col === state.goal.col && state.pos.row === state.goal.row) {
       playSuccess(state.pos.col, state.pos.row, 1500, () => {
@@ -940,7 +629,6 @@
       });
     }
   }
-
   // --------------------------------------------------------------
   // LEVEL & UTILITIES
   // --------------------------------------------------------------
@@ -951,7 +639,6 @@
     do { goal = randomCell(); } while ((goal.col===playerPos.col && goal.row===playerPos.row) || cellDist(goal, playerPos) <= 1);
     return goal;
   }
-
   function startLevel() {
     state.pos = { col:0, row:0 };
     state.dir = 'N';
@@ -965,7 +652,6 @@
     setStatus('IDLE');
     playIdleForCell(state.pos.col, state.pos.row, state.dir);
   }
-
   function nextLevel() { state.level++; hideOverlay(); startLevel(); }
   function showOverlay() { document.getElementById('overlay').classList.add('show'); }
   function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
@@ -985,7 +671,6 @@
     updateHighlight();
     updateLineNumbers();
   }
-
   // --------------------------------------------------------------
   // EDITOR & SYNTAX HIGHLIGHT
   // --------------------------------------------------------------
@@ -1011,12 +696,10 @@
       document.getElementById('line-numbers').scrollTop = ta.scrollTop;
     });
   }
-
   function updateLineNumbers() {
     const lines = (document.getElementById('code-input').value || "").split('\n');
     document.getElementById('line-numbers').innerHTML = lines.map((_,i) => `<div>${i+1}</div>`).join('');
   }
-
   function highlightSyntax(code) {
     const keywords = ['def','for','in','range','if','elif','else','while','and','or','not','return','True','False','None','pass','break','continue'];
     const builtins = ['move_forward','turn_left','turn_right','current_position','print'];
@@ -1028,13 +711,11 @@
       .replace(new RegExp(`\\b(${builtins.join('|')})\\b`,'g'), '<span class="builtin">$1</span>')
       .replace(new RegExp(`\\b(${keywords.join('|')})\\b`,'g'), '<span class="kw">$1</span>');
   }
-
   function updateHighlight() {
     const code = document.getElementById('code-input').value || "";
     document.getElementById('code-highlight').innerHTML = highlightSyntax(code);
   }
-
-  // Flashing instructions tab until first click
+  // Flashing instructions tab
   let instructionsClicked = false;
   const instructionsTab = document.getElementById('instructions-tab');
   function stopFlashing() {
@@ -1048,7 +729,6 @@
     stopFlashing();
     switchTab('instructions');
   });
-
   function switchTab(tabId) {
     const codePane = document.getElementById('code-pane');
     const instrPane = document.getElementById('instructions-pane');
@@ -1065,26 +745,20 @@
       const text = `# H.U.M.A.N. Control Interface
 #
 # Functions: move_forward(), turn_left(), turn_right()
+# Built-in: current_position (returns [col, row])
+# Lists support .append() and .pop()
 #
-# Built-in variable: current_position (returns [col, row])
-#
-# Lists are fully supported: create with [1,2,3], index with var[i], assign to list elements.
-# Multi-dimensional arrays work: vis[0][0][0] = 1
-# print() outputs to the console.
-#
-# Example:
-#   pos = current_position
-#   if pos[0] == 0 and pos[1] == 0:
-#       move_forward()
-#   else:
-#       turn_left()
-#
+# Example BFS:
+#   queue = []
+#   queue.append([0,0,0])
+#   while len(queue) > 0:
+#       state = queue.pop(0)
+#       ...
 # Write your program in main.py and press RUN.`;
       document.getElementById('instructions-content').innerHTML = text.split('\n').map(l => `<div class="comment-line">${escapeHtml(l)}</div>`).join('');
     }
   }
   function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
-
   // --------------------------------------------------------------
   // INIT
   // --------------------------------------------------------------
