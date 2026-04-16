@@ -1253,34 +1253,6 @@
         ]
       },
       {
-        type: 'heading', text: 'BFS EXAMPLE'
-      },
-      {
-        type: 'comment', text: '# BFS to reach goal_position'
-      },
-      {
-        type: 'example', items: [
-          'start = current_position',
-          'goal  = goal_position',
-          'queue = [start]',
-          'visited = [start]',
-          'parent = []',
-          '',
-          'while len(queue) > 0:',
-          '    node = queue.pop(0)',
-          '    col, row = node',
-          '    neighbours = [[col+1,row],[col-1,row],',
-          '                  [col,row+1],[col,row-1]]',
-          '    for nb in neighbours:',
-          '        nc, nr = nb',
-          '        if nc >= 0 and nc < 4:',
-          '            if nr >= 0 and nr < 4:',
-          '                if nb not in visited:',
-          '                    visited.append(nb)',
-          '                    queue.append(nb)',
-        ]
-      },
-      {
         type: 'heading', text: 'NOTES'
       },
       {
