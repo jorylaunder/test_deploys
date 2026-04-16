@@ -276,6 +276,28 @@
     color: #5a7a5a;
     white-space: pre-wrap;
   }
+  .instructions-container .instr-heading {
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    margin: 14px 0 6px;
+  }
+  .instructions-container .instr-line {
+    color: var(--text);
+    white-space: pre-wrap;
+    padding-left: 8px;
+  }
+  .instructions-container .instr-example {
+    color: var(--accent3);
+    white-space: pre-wrap;
+    padding-left: 8px;
+  }
+  .instructions-container .instr-dim {
+    color: var(--textdim);
+    white-space: pre-wrap;
+    padding-left: 8px;
+  }
 
   #controls-bar {
     border-top: 1px solid var(--border);
@@ -484,7 +506,7 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM (direction‑aware, full‑grid)
+  // VIDEO SYSTEM
   // ==============================================================
   const video = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
@@ -540,25 +562,21 @@
   function playMoveForward(fromCol, fromRow, dir, toCol, toRow, duration, callback) {
     playAction(fromCol, fromRow, 'forward', dir, duration, toCol, toRow, dir, callback);
   }
-
   function playTurnLeft(col, row, oldDir, newDir, duration, callback) {
     playAction(col, row, 'turn_left', oldDir, duration, col, row, newDir, callback);
   }
-
   function playTurnRight(col, row, oldDir, newDir, duration, callback) {
     playAction(col, row, 'turn_right', oldDir, duration, col, row, newDir, callback);
   }
-
   function playSuccess(col, row, duration, callback) {
     playAction(col, row, 'success', null, duration, col, row, state.dir, callback);
   }
-
   function playError(col, row, duration, callback) {
     playAction(col, row, 'error', null, duration, col, row, state.dir, callback);
   }
 
   // ==============================================================
-  // OVERLAY (orange ring only)
+  // OVERLAY
   // ==============================================================
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
@@ -599,26 +617,105 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // ==============================================================
-  // ENHANCED INTERPRETER – supports .append(), .pop() on any expression
+  // INTERPRETER UTILITIES
   // ==============================================================
+
+  // Serialize any value to a string representation for evaluateExpression
+  function serializeVal(val) {
+    if (val === null) return 'null';
+    if (val === true) return 'true';
+    if (val === false) return 'false';
+    if (Array.isArray(val)) return '[' + val.map(serializeVal).join(',') + ']';
+    if (typeof val === 'string') return JSON.stringify(val);
+    return String(val);
+  }
+
+  // Evaluate a Python-ish expression in the context of scope
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
+
+    // len(x)
+    const lenMatch = expr.match(/^len\((.+)\)$/);
+    if (lenMatch) {
+      const inner = evaluateExpression(lenMatch[1], scope);
+      if (Array.isArray(inner)) return inner.length;
+      if (typeof inner === 'string') return inner.length;
+      return 0;
+    }
+
+    // tuple literal: (a, b) or (a, b, c)
+    const tupleMatch = expr.match(/^\((.+)\)$/);
+    if (tupleMatch) {
+      // only treat as tuple if it contains a comma at the top level
+      const inner = tupleMatch[1];
+      const parts = splitTopLevel(inner, ',');
+      if (parts.length >= 2) {
+        return parts.map(p => evaluateExpression(p.trim(), scope));
+      }
+    }
+
+    // list literal: [a, b, c]
+    const listMatch = expr.match(/^\[(.+)?\]$/);
+    if (listMatch && listMatch[1] !== undefined) {
+      const parts = splitTopLevel(listMatch[1], ',');
+      return parts.map(p => evaluateExpression(p.trim(), scope));
+    }
+    if (expr === '[]') return [];
+
+    // "x in y" membership test
+    const inMatch = expr.match(/^(.+?)\s+in\s+(.+)$/);
+    if (inMatch) {
+      const needle = evaluateExpression(inMatch[1].trim(), scope);
+      const haystack = evaluateExpression(inMatch[2].trim(), scope);
+      if (Array.isArray(haystack)) {
+        return haystack.some(el => JSON.stringify(el) === JSON.stringify(needle));
+      }
+      return false;
+    }
+
+    // "x not in y"  — handled via JS replacement below, but catch here too
+    const notInMatch = expr.match(/^(.+?)\s+not\s+in\s+(.+)$/);
+    if (notInMatch) {
+      const needle = evaluateExpression(notInMatch[1].trim(), scope);
+      const haystack = evaluateExpression(notInMatch[2].trim(), scope);
+      if (Array.isArray(haystack)) {
+        return !haystack.some(el => JSON.stringify(el) === JSON.stringify(needle));
+      }
+      return true;
+    }
+
+    // Replace Python keywords and identifiers with JS equivalents
     let replaced = expr.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
       if (match === 'True') return 'true';
       if (match === 'False') return 'false';
       if (match === 'None') return 'null';
+      if (match === 'and') return '&&';
+      if (match === 'or') return '||';
+      if (match === 'not') return '!';
       if (match === 'current_position') return `[${state.pos.col}, ${state.pos.row}]`;
-      if (match in scope) {
-        let val = scope[match];
-        if (Array.isArray(val)) return '[' + val.map(v => JSON.stringify(v)).join(',') + ']';
-        return JSON.stringify(val);
-      }
+      if (match === 'goal_position') return `[${state.goal.col}, ${state.goal.row}]`;
+      if (match in scope) return serializeVal(scope[match]);
       return match;
     });
+
     try { return new Function('return (' + replaced + ')')(); } catch(e) { return 0; }
   }
 
-  // Helper to resolve a target like vis[i][j] for assignment
+  // Split a string by a delimiter, respecting nested brackets/parens
+  function splitTopLevel(str, delim) {
+    const parts = [];
+    let depth = 0, current = '';
+    for (let ch of str) {
+      if (ch === '(' || ch === '[') depth++;
+      else if (ch === ')' || ch === ']') depth--;
+      if (ch === delim && depth === 0) { parts.push(current); current = ''; }
+      else current += ch;
+    }
+    if (current.trim() !== '') parts.push(current);
+    return parts;
+  }
+
+  // Resolve an indexed assignment target like vis[i][j]
   function resolveIndexedTarget(expr, scope) {
     let match = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)((?:\[[^\]]+\])+)$/);
     if (!match) return { target: null, indices: null };
@@ -629,8 +726,7 @@
     while (remaining.length > 0) {
       let idxMatch = remaining.match(/^\[([^\]]+)\]/);
       if (!idxMatch) break;
-      let idxVal = evaluateExpression(idxMatch[1], scope);
-      indices.push(idxVal);
+      indices.push(evaluateExpression(idxMatch[1], scope));
       remaining = remaining.slice(idxMatch[0].length);
     }
     if (!(base in scope)) return { target: null, indices: null };
@@ -646,8 +742,7 @@
         if (obj[idx] === undefined) obj[idx] = [];
         obj = obj[idx];
       }
-      let lastIdx = idxTarget.indices[idxTarget.indices.length - 1];
-      obj[lastIdx] = value;
+      obj[idxTarget.indices[idxTarget.indices.length - 1]] = value;
       return true;
     } else if (left.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
       scope[left] = value;
@@ -656,45 +751,44 @@
     return false;
   }
 
-  // Generic method call handler – works for obj.append(x) where obj can be any expression (e.g., vis[i])
-  function handleMethodCall(expr, scope) {
-    let match = expr.match(/^(.+?)\.(append|pop)\(([^)]*)\)$/);
+  // Handle obj.method() calls — obj can be any expression e.g. vis[i]
+  function handleMethodCall(stripped, scope) {
+    // match: <expr>.append(<arg>) or <expr>.pop(<arg>?)
+    const match = stripped.match(/^(.+?)\.(append|pop)\(([^)]*)\)$/);
     if (!match) return null;
-    let objExpr = match[1].trim();
-    let method = match[2];
-    let argExpr = match[3].trim();
-    // Evaluate the object expression
-    let obj = evaluateExpression(objExpr, scope);
+    const objExpr = match[1].trim();
+    const method = match[2];
+    const argExpr = match[3].trim();
+    const obj = evaluateExpression(objExpr, scope);
     if (!Array.isArray(obj)) return null;
     if (method === 'append') {
-      let val = evaluateExpression(argExpr, scope);
+      const val = evaluateExpression(argExpr, scope);
       obj.push(val);
       return true;
     } else if (method === 'pop') {
-      if (argExpr === "") {
-        return obj.pop();
-      } else {
-        let idx = evaluateExpression(argExpr, scope);
-        if (typeof idx === 'number' && idx >= 0 && idx < obj.length) {
-          return obj.splice(idx, 1)[0];
-        }
-        return null;
-      }
+      if (argExpr === '') return obj.pop();
+      const idx = evaluateExpression(argExpr, scope);
+      if (typeof idx === 'number' && idx >= 0 && idx < obj.length) return obj.splice(idx, 1)[0];
+      return null;
     }
     return null;
   }
 
+  // ==============================================================
+  // INTERPRETER
+  // ==============================================================
   function interpret(code, actions, errors, scope, depth, limit) {
-    if (depth > 100) throw new Error('Recursion limit');
+    if (depth > 100) throw new Error('Recursion limit exceeded');
     const lines = code.split('\n');
     let i = 0;
+
     while (i < lines.length) {
-      if (actions.length >= limit) throw new Error('Step limit');
-      let line = lines[i];
-      let stripped = line.trimStart();
+      if (actions.length >= limit) throw new Error('Step limit (500) exceeded');
+      const line = lines[i];
+      const stripped = line.trimStart();
       if (!stripped || stripped.startsWith('#')) { i++; continue; }
 
-      // def ...
+      // --- def ---
       const defMatch = stripped.match(/^def\s+(\w+)\s*\(\)\s*:/);
       if (defMatch) {
         const funcName = defMatch[1];
@@ -704,8 +798,7 @@
         while (i < lines.length) {
           const l2 = lines[i];
           if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
-          const ind2 = l2.length - l2.trimStart().length;
-          if (ind2 <= indent) break;
+          if (l2.length - l2.trimStart().length <= indent) break;
           bodyLines.push(l2.slice(indent + 4));
           i++;
         }
@@ -714,54 +807,77 @@
         continue;
       }
 
-      // user function call
+      // --- user function call (no args) ---
       const callMatch = stripped.match(/^(\w+)\(\)$/);
-      if (callMatch && !['move_forward','turn_left','turn_right'].includes(callMatch[1])) {
+      if (callMatch && !['move_forward','turn_left','turn_right','len'].includes(callMatch[1])) {
         const funcName = callMatch[1];
         if (scope.__funcs__ && scope.__funcs__[funcName]) {
-          interpret(scope.__funcs__[funcName], actions, errors, { ...scope }, depth+1, limit);
-        } else errors.push(`Function '${funcName}' not defined`);
-        i++;
-        continue;
+          interpret(scope.__funcs__[funcName], actions, errors, { ...scope, __funcs__: scope.__funcs__ }, depth+1, limit);
+        } else {
+          errors.push(`Function '${funcName}' not defined`);
+        }
+        i++; continue;
       }
 
-      // method call (e.g., list.append(x) or vis[i].append(x))
-      let methodResult = handleMethodCall(stripped, scope);
-      if (methodResult !== null) {
-        i++;
-        continue;
-      }
+      // --- method call ---
+      const methodResult = handleMethodCall(stripped, scope);
+      if (methodResult !== null) { i++; continue; }
 
-      // for loop
+      // --- for loop ---
       const forMatch = stripped.match(/^for\s+(\w+)\s+in\s+range\((.+)\)\s*:/);
       if (forMatch) {
         const varName = forMatch[1];
-        let rangeArgs = evaluateExpression(forMatch[2], scope);
-        if (!Array.isArray(rangeArgs)) rangeArgs = [0, Number(rangeArgs)];
-        let start = rangeArgs.length >= 2 ? Number(rangeArgs[0]) : 0;
-        let stop = rangeArgs.length >= 1 ? Number(rangeArgs[rangeArgs.length-1]) : 0;
-        let step = rangeArgs.length === 3 ? Number(rangeArgs[2]) : 1;
+        const rangeVal = evaluateExpression(forMatch[2], scope);
+        let start = 0, stop = 0, step = 1;
+        if (Array.isArray(rangeVal)) {
+          if (rangeVal.length === 1) { stop = Number(rangeVal[0]); }
+          else if (rangeVal.length === 2) { start = Number(rangeVal[0]); stop = Number(rangeVal[1]); }
+          else { start = Number(rangeVal[0]); stop = Number(rangeVal[1]); step = Number(rangeVal[2]); }
+        } else {
+          stop = Number(rangeVal);
+        }
         const indent = line.length - stripped.length;
         const bodyLines = [];
         i++;
         while (i < lines.length) {
           const l2 = lines[i];
           if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
-          const ind2 = l2.length - l2.trimStart().length;
-          if (ind2 <= indent) break;
+          if (l2.length - l2.trimStart().length <= indent) break;
           bodyLines.push(l2.slice(indent + 4));
           i++;
         }
         const body = bodyLines.join('\n');
         for (let v = start; step > 0 ? v < stop : v > stop; v += step) {
-          const newScope = { ...scope, __funcs__: scope.__funcs__ };
-          newScope[varName] = v;
-          interpret(body, actions, errors, newScope, depth+1, limit);
+          interpret(body, actions, errors, { ...scope, __funcs__: scope.__funcs__, [varName]: v }, depth+1, limit);
         }
         continue;
       }
 
-      // while loop
+      // --- for var in list ---
+      const forInMatch = stripped.match(/^for\s+(\w+)\s+in\s+(.+)\s*:/);
+      if (forInMatch) {
+        const varName = forInMatch[1];
+        const listVal = evaluateExpression(forInMatch[2], scope);
+        const indent = line.length - stripped.length;
+        const bodyLines = [];
+        i++;
+        while (i < lines.length) {
+          const l2 = lines[i];
+          if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
+          if (l2.length - l2.trimStart().length <= indent) break;
+          bodyLines.push(l2.slice(indent + 4));
+          i++;
+        }
+        const body = bodyLines.join('\n');
+        if (Array.isArray(listVal)) {
+          for (const item of listVal) {
+            interpret(body, actions, errors, { ...scope, __funcs__: scope.__funcs__, [varName]: item }, depth+1, limit);
+          }
+        }
+        continue;
+      }
+
+      // --- while ---
       const whileMatch = stripped.match(/^while\s+(.+)\s*:/);
       if (whileMatch) {
         const condition = whileMatch[1];
@@ -771,8 +887,7 @@
         while (i < lines.length) {
           const l2 = lines[i];
           if (l2.trim() === '') { bodyLines.push(''); i++; continue; }
-          const ind2 = l2.length - l2.trimStart().length;
-          if (ind2 <= indent) break;
+          if (l2.length - l2.trimStart().length <= indent) break;
           bodyLines.push(l2.slice(indent + 4));
           i++;
         }
@@ -782,25 +897,25 @@
           interpret(body, actions, errors, scope, depth+1, limit);
           iter++;
         }
-        if (iter >= 200) errors.push('While loop exceeded 200 iterations (possible infinite loop)');
+        if (iter >= 200) errors.push('While loop exceeded 200 iterations');
         continue;
       }
 
-      // if/elif/else
+      // --- if/elif/else ---
       if (stripped.match(/^if\s+.+:/) || stripped.match(/^elif\s+.+:/) || stripped.match(/^else\s*:/)) {
         const indent = line.length - stripped.length;
-        let blocks = [];
+        const blocks = [];
         let currentBlock = { cond: null, body: [] };
         while (i < lines.length) {
           const curLine = lines[i];
           const curStripped = curLine.trimStart();
           const curIndent = curLine.length - curStripped.length;
           if (curIndent < indent) break;
-          if (curStripped.match(/^(if|elif)\s+(.+):/)) {
+          const ifMatch = curStripped.match(/^(if|elif)\s+(.+):/);
+          if (ifMatch && curIndent === indent) {
             if (currentBlock.cond !== null || currentBlock.body.length) blocks.push(currentBlock);
-            const match = curStripped.match(/^(if|elif)\s+(.+):/);
-            currentBlock = { cond: match[2], body: [] };
-          } else if (curStripped.match(/^else\s*:/)) {
+            currentBlock = { cond: ifMatch[2], body: [] };
+          } else if (curStripped.match(/^else\s*:/) && curIndent === indent) {
             if (currentBlock.cond !== null || currentBlock.body.length) blocks.push(currentBlock);
             currentBlock = { cond: 'True', body: [] };
           } else if (curStripped !== '') {
@@ -811,9 +926,9 @@
         }
         if (currentBlock.body.length || currentBlock.cond !== null) blocks.push(currentBlock);
         let executed = false;
-        for (let blk of blocks) {
+        for (const blk of blocks) {
           if (executed) break;
-          let condVal = (blk.cond === 'True') ? true : evaluateExpression(blk.cond, scope);
+          const condVal = blk.cond === 'True' ? true : evaluateExpression(blk.cond, scope);
           if (condVal) {
             interpret(blk.body.join('\n'), actions, errors, scope, depth+1, limit);
             executed = true;
@@ -822,54 +937,54 @@
         continue;
       }
 
-      // assignment with multi-dim indexing
+      // --- tuple unpacking: a, b = expr ---
+      const unpackMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)+)\s*=\s*(.+)$/);
+      if (unpackMatch) {
+        const names = unpackMatch[1].split(',').map(s => s.trim());
+        const val = evaluateExpression(unpackMatch[2], scope);
+        if (Array.isArray(val)) {
+          names.forEach((name, idx) => { scope[name] = val[idx] !== undefined ? val[idx] : null; });
+        }
+        i++; continue;
+      }
+
+      // --- indexed assignment: vis[i][j] = x ---
       const assignMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(?:\[[^\]]+\])+)\s*=\s*(.+)$/);
       if (assignMatch) {
-        const left = assignMatch[1];
-        const rightExpr = assignMatch[2];
-        const value = evaluateExpression(rightExpr, scope);
-        assignValue(left, value, scope);
-        i++;
-        continue;
+        assignValue(assignMatch[1], evaluateExpression(assignMatch[2], scope), scope);
+        i++; continue;
       }
 
-      // simple assignment
+      // --- simple assignment ---
       const simpleAssign = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
       if (simpleAssign) {
-        const left = simpleAssign[1];
-        const rightExpr = simpleAssign[2];
-        const value = evaluateExpression(rightExpr, scope);
-        scope[left] = value;
-        i++;
-        continue;
+        scope[simpleAssign[1]] = evaluateExpression(simpleAssign[2], scope);
+        i++; continue;
       }
 
-      // print
+      // --- print ---
       const printMatch = stripped.match(/^print\((.*)\)$/);
       if (printMatch) {
-        let arg = printMatch[1];
-        let val = evaluateExpression(arg, scope);
-        logConsole(String(val), 'log-line');
-        i++;
-        continue;
+        const val = evaluateExpression(printMatch[1], scope);
+        logConsole(Array.isArray(val) ? JSON.stringify(val) : String(val), 'log-line');
+        i++; continue;
       }
 
-      // built-in actions
+      // --- built-in actions ---
       if (stripped === 'move_forward()') { actions.push('move_forward'); i++; continue; }
       if (stripped === 'turn_left()') { actions.push('turn_left'); i++; continue; }
       if (stripped === 'turn_right()') { actions.push('turn_right'); i++; continue; }
       if (stripped === 'pass') { i++; continue; }
+
       if (stripped !== '') errors.push(`Syntax error: "${stripped.substring(0,50)}"`);
       i++;
     }
   }
 
   function parseAndExecute(code) {
-    const actions = [];
-    const errors = [];
-    const globalScope = { __funcs__: {} };
+    const actions = [], errors = [];
     try {
-      interpret(code, actions, errors, globalScope, 0, 500);
+      interpret(code, actions, errors, { __funcs__: {} }, 0, 500);
     } catch(e) {
       errors.push(e.message);
     }
@@ -877,7 +992,7 @@
   }
 
   // ==============================================================
-  // EXECUTION ENGINE (unchanged)
+  // EXECUTION ENGINE
   // ==============================================================
   const ACTION_DURATION = 800;
 
@@ -904,14 +1019,14 @@
     const simPos = { ...state.pos };
     let simDir = state.dir;
     const simMoves = [];
-    for (let act of actions) {
+    for (const act of actions) {
       if (act === 'turn_left') {
         const newDir = DIRS[(DIRS.indexOf(simDir)+3)%4];
-        simMoves.push({ type: 'turn_left', pos: { ...simPos }, oldDir: simDir, newDir: newDir });
+        simMoves.push({ type: 'turn_left', pos: { ...simPos }, oldDir: simDir, newDir });
         simDir = newDir;
       } else if (act === 'turn_right') {
         const newDir = DIRS[(DIRS.indexOf(simDir)+1)%4];
-        simMoves.push({ type: 'turn_right', pos: { ...simPos }, oldDir: simDir, newDir: newDir });
+        simMoves.push({ type: 'turn_right', pos: { ...simPos }, oldDir: simDir, newDir });
         simDir = newDir;
       } else if (act === 'move_forward') {
         const d = MOVE[simDir];
@@ -939,28 +1054,21 @@
     if (!state.running) { done(); return; }
     if (idx >= moves.length) { done(); return; }
     const move = moves[idx];
-    const progress = ((idx+1)/moves.length)*100;
-    document.getElementById('run-progress').style.width = progress + '%';
+    document.getElementById('run-progress').style.width = (((idx+1)/moves.length)*100) + '%';
     if (move.type === 'move_forward') {
       logConsole(`  move_forward() → ${colName(move.to.col)}${move.to.row+1}`, 'log-exec');
       playMoveForward(move.from.col, move.from.row, move.dir, move.to.col, move.to.row, ACTION_DURATION, () => {
-        state.pos = { ...move.to };
-        refreshUI();
-        executeQueue(moves, idx+1, done);
+        state.pos = { ...move.to }; refreshUI(); executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'turn_left') {
       logConsole(`  turn_left() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       playTurnLeft(move.pos.col, move.pos.row, move.oldDir, move.newDir, ACTION_DURATION * 0.7, () => {
-        state.dir = move.newDir;
-        refreshUI();
-        executeQueue(moves, idx+1, done);
+        state.dir = move.newDir; refreshUI(); executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'turn_right') {
       logConsole(`  turn_right() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       playTurnRight(move.pos.col, move.pos.row, move.oldDir, move.newDir, ACTION_DURATION * 0.7, () => {
-        state.dir = move.newDir;
-        refreshUI();
-        executeQueue(moves, idx+1, done);
+        state.dir = move.newDir; refreshUI(); executeQueue(moves, idx+1, done);
       });
     } else if (move.type === 'wall_bump') {
       logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
@@ -978,7 +1086,7 @@
   }
 
   // ==============================================================
-  // LEVEL & UTILITIES
+  // LEVELS & UTILITIES
   // ==============================================================
   function randomCell() { return { col: Math.floor(Math.random()*4), row: Math.floor(Math.random()*4) }; }
   function cellDist(a,b) { return Math.abs(a.col-b.col)+Math.abs(a.row-b.row); }
@@ -1005,19 +1113,23 @@
   function nextLevel() { state.level++; hideOverlay(); startLevel(); }
   function showOverlay() { document.getElementById('overlay').classList.add('show'); }
   function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
+
   function logConsole(msg, cls='log-line') {
     const body = document.getElementById('console-body');
-    const div = document.createElement('div'); div.className = cls; div.textContent = msg;
-    body.appendChild(div); body.scrollTop = body.scrollHeight;
+    const div = document.createElement('div');
+    div.className = cls;
+    div.textContent = msg;
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
   }
   function clearConsole() { document.getElementById('console-body').innerHTML = ''; }
   function setStatus(s) {
     const el = document.getElementById('st-status');
     el.textContent = s;
-    el.style.color = s==='RUNNING'?'var(--accent)':'var(--text)';
+    el.style.color = s==='RUNNING' ? 'var(--accent)' : 'var(--text)';
   }
   function resetCode() {
-    document.getElementById('code-input').value = "";
+    document.getElementById('code-input').value = '';
     updateHighlight();
     updateLineNumbers();
   }
@@ -1027,16 +1139,16 @@
   // ==============================================================
   function initEditor() {
     const ta = document.getElementById('code-input');
-    ta.value = "";
+    ta.value = '';
     updateHighlight();
     updateLineNumbers();
     ta.addEventListener('input', () => { updateHighlight(); updateLineNumbers(); });
     ta.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') {
         e.preventDefault();
-        const start = ta.selectionStart, end = ta.selectionEnd;
-        ta.value = ta.value.slice(0, start) + '    ' + ta.value.slice(end);
-        ta.selectionStart = ta.selectionEnd = start + 4;
+        const s = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + '    ' + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = s + 4;
         updateHighlight(); updateLineNumbers();
       }
       if (e.ctrlKey && e.key === 'Enter') runCode();
@@ -1049,47 +1161,159 @@
   }
 
   function updateLineNumbers() {
-    const lines = (document.getElementById('code-input').value || "").split('\n');
+    const lines = (document.getElementById('code-input').value || '').split('\n');
     document.getElementById('line-numbers').innerHTML = lines.map((_,i) => `<div>${i+1}</div>`).join('');
   }
 
   function highlightSyntax(code) {
-    const keywords = ['def','for','in','range','if','elif','else','while','and','or','not','return','True','False','None','pass','break','continue'];
-    const builtins = ['move_forward','turn_left','turn_right','current_position','print'];
+    const keywords = ['def','for','in','range','if','elif','else','while','and','or','not','return','True','False','None','pass','break','continue','not'];
+    const builtins = ['move_forward','turn_left','turn_right','current_position','goal_position','print','len'];
     return code
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/(#[^\n]*)/g, '<span class="cm">$1</span>')
       .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="str">$1</span>')
       .replace(/\b(\d+)\b/g, '<span class="num">$1</span>')
-      .replace(new RegExp(`\\b(${builtins.join('|')})\\b`,'g'), '<span class="builtin">$1</span>')
-      .replace(new RegExp(`\\b(${keywords.join('|')})\\b`,'g'), '<span class="kw">$1</span>');
+      .replace(new RegExp(`\\b(${builtins.join('|')})\\b`, 'g'), '<span class="builtin">$1</span>')
+      .replace(new RegExp(`\\b(${keywords.join('|')})\\b`, 'g'), '<span class="kw">$1</span>');
   }
 
   function updateHighlight() {
-    const code = document.getElementById('code-input').value || "";
-    document.getElementById('code-highlight').innerHTML = highlightSyntax(code);
+    document.getElementById('code-highlight').innerHTML =
+      highlightSyntax(document.getElementById('code-input').value || '');
   }
 
-  // Flashing instructions tab
+  // ==============================================================
+  // INSTRUCTIONS
+  // ==============================================================
   let instructionsClicked = false;
   const instructionsTab = document.getElementById('instructions-tab');
+
   function stopFlashing() {
-    if (!instructionsClicked) {
-      instructionsClicked = true;
-      instructionsTab.classList.remove('tab-flash');
-    }
+    if (!instructionsClicked) { instructionsClicked = true; instructionsTab.classList.remove('tab-flash'); }
   }
   instructionsTab.classList.add('tab-flash');
-  instructionsTab.addEventListener('click', () => {
-    stopFlashing();
-    switchTab('instructions');
-  });
+  instructionsTab.addEventListener('click', () => { stopFlashing(); switchTab('instructions'); });
+
+  function buildInstructions() {
+    const container = document.getElementById('instructions-content');
+    const sections = [
+      {
+        type: 'heading', text: 'MOVEMENT'
+      },
+      {
+        type: 'lines', items: [
+          'move_forward()   — move one cell in facing direction',
+          'turn_left()      — rotate 90° counter-clockwise',
+          'turn_right()     — rotate 90° clockwise',
+        ]
+      },
+      {
+        type: 'heading', text: 'VARIABLES'
+      },
+      {
+        type: 'lines', items: [
+          'current_position — returns [col, row]  e.g. [0, 2]',
+          'goal_position    — returns [col, row]  e.g. [3, 1]',
+        ]
+      },
+      {
+        type: 'heading', text: 'BUILT-INS'
+      },
+      {
+        type: 'lines', items: [
+          'len(x)           — length of a list',
+          'print(x)         — output to console',
+          'range(n)         — 0..n-1',
+          'range(a, b)      — a..b-1',
+        ]
+      },
+      {
+        type: 'heading', text: 'DATA STRUCTURES'
+      },
+      {
+        type: 'lines', items: [
+          'Lists:   x = []  /  x.append(v)  /  x.pop(0)',
+          'Tuples:  t = (1, 2)  — stored as lists internally',
+          'Unpack:  a, b = some_list',
+          '2D list: grid[i][j] = value',
+          'Test:    val in my_list   →  True/False',
+          '         val not in my_list',
+        ]
+      },
+      {
+        type: 'heading', text: 'CONTROL FLOW'
+      },
+      {
+        type: 'lines', items: [
+          'if / elif / else',
+          'for x in range(n)',
+          'for item in my_list',
+          'while condition',
+          'def my_func():   (no arguments)',
+        ]
+      },
+      {
+        type: 'heading', text: 'BFS EXAMPLE'
+      },
+      {
+        type: 'comment', text: '# BFS to reach goal_position'
+      },
+      {
+        type: 'example', items: [
+          'start = current_position',
+          'goal  = goal_position',
+          'queue = [start]',
+          'visited = [start]',
+          'parent = []',
+          '',
+          'while len(queue) > 0:',
+          '    node = queue.pop(0)',
+          '    col, row = node',
+          '    neighbours = [[col+1,row],[col-1,row],',
+          '                  [col,row+1],[col,row-1]]',
+          '    for nb in neighbours:',
+          '        nc, nr = nb',
+          '        if nc >= 0 and nc < 4:',
+          '            if nr >= 0 and nr < 4:',
+          '                if nb not in visited:',
+          '                    visited.append(nb)',
+          '                    queue.append(nb)',
+        ]
+      },
+      {
+        type: 'heading', text: 'NOTES'
+      },
+      {
+        type: 'lines', items: [
+          'Max 500 actions per run.',
+          'Max 200 iterations per while loop.',
+          'Functions take no arguments.',
+          'Ctrl+Enter to run code.',
+        ]
+      },
+    ];
+
+    let html = '';
+    for (const sec of sections) {
+      if (sec.type === 'heading') {
+        html += `<div class="instr-heading">${escapeHtml(sec.text)}</div>`;
+      } else if (sec.type === 'lines') {
+        sec.items.forEach(l => { html += `<div class="instr-line">${escapeHtml(l)}</div>`; });
+        html += '<div style="height:4px"></div>';
+      } else if (sec.type === 'comment') {
+        html += `<div class="comment-line">${escapeHtml(sec.text)}</div>`;
+      } else if (sec.type === 'example') {
+        sec.items.forEach(l => { html += `<div class="instr-example">${escapeHtml(l)}</div>`; });
+        html += '<div style="height:4px"></div>';
+      }
+    }
+    container.innerHTML = html;
+  }
 
   function switchTab(tabId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     const codePane = document.getElementById('code-pane');
     const instrPane = document.getElementById('instructions-pane');
-    const tabs = document.querySelectorAll('.tab');
-    tabs.forEach(t => t.classList.remove('active'));
     if (tabId === 'code') {
       codePane.classList.remove('hidden');
       instrPane.classList.add('hidden');
@@ -1098,18 +1322,12 @@
       codePane.classList.add('hidden');
       instrPane.classList.remove('hidden');
       document.querySelector('.tab[data-tab="instructions"]').classList.add('active');
-      const text = `# H.U.M.A.N. Control Interface
-#
-# Functions: move_forward(), turn_left(), turn_right()
-# Built-in variable: current_position (returns [col, row])
-# Lists support .append() and .pop()
-#
-# Some things are limited
-# Write your program in main.py and press RUN.`;
-      document.getElementById('instructions-content').innerHTML = text.split('\n').map(l => `<div class="comment-line">${escapeHtml(l)}</div>`).join('');
     }
   }
-  function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>]/g, m => m==='&'?'&amp;':m==='<'?'&lt;':'&gt;');
+  }
 
   // ==============================================================
   // INIT
@@ -1122,15 +1340,16 @@
     canvas.height = rect.height;
     ctx = canvas.getContext('2d');
     resizeCanvas();
+    buildInstructions();
     initEditor();
+
     document.querySelectorAll('.tab').forEach(tab => {
       if (tab.getAttribute('data-tab') !== 'instructions') {
         tab.addEventListener('click', () => switchTab(tab.dataset.tab));
       }
     });
     document.querySelector('.tab[data-tab="code"]').addEventListener('click', () => {
-      stopFlashing();
-      switchTab('code');
+      stopFlashing(); switchTab('code');
     });
     document.getElementById('btn-run').addEventListener('click', () => {
       if (state.running) {
