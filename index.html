@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N. // Neural Protocol</title>
+<link rel="icon" type="image/png" href="favicon.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
 
@@ -42,7 +43,7 @@
   #app {
     display: grid;
     grid-template-rows: 52px 1fr;
-    grid-template-columns: 1fr 480px;
+    grid-template-columns: 1fr 560px;  /* wider right panel */
     height: 100vh;
   }
 
@@ -98,7 +99,7 @@
 
   #grid-container {
     position: relative;
-    width: min(80vh, 80vw);
+    width: min(70vh, 70vw);
     aspect-ratio: 1 / 1;
     background: #000;
   }
@@ -202,10 +203,19 @@
     padding: 4px 10px;
     border-bottom: 2px solid transparent;
     cursor: pointer;
+    transition: all 0.1s;
   }
   .tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
+  }
+  /* Flashing animation for instructions tab before first click */
+  .tab-flash {
+    animation: flashText 1s ease-in-out infinite;
+  }
+  @keyframes flashText {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; text-shadow: 0 0 4px var(--accent2); }
   }
   .tab-dot {
     width: 6px; height: 6px;
@@ -458,7 +468,7 @@
   <div id="editor-panel">
     <div id="editor-tabs">
       <div class="tab active" data-tab="code">main.py</div>
-      <div class="tab" data-tab="instructions">instructions.txt</div>
+      <div class="tab" data-tab="instructions" id="instructions-tab">instructions.txt</div>
       <div style="margin-left:auto; font-size:9px; letter-spacing:2px; color:var(--textdim)">PYTHON 3.KINDA</div>
     </div>
     <div class="editor-wrapper">
@@ -515,17 +525,14 @@
   const canvas = document.getElementById('goal-overlay');
   let ctx;
 
-  // Helper to build video path with optional direction
   function getVideoPath(col, row, action, dir = null) {
     if (dir && (action === 'idle' || action === 'forward' || action === 'turn_left' || action === 'turn_right')) {
       return `videos/cell_${col}_${row}_${action}_${dir}.mp4`;
     } else {
-      // success / error (no direction)
       return `videos/cell_${col}_${row}_${action}.mp4`;
     }
   }
 
-  // Play idle video for a specific cell and facing direction
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, 'idle', dir);
     if (video.src !== src) {
@@ -546,7 +553,6 @@
     }
   }
 
-  // Generic action player: plays a video once, then resumes idle on a target cell with a target direction
   function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
     const src = getVideoPath(actionCol, actionRow, action, actionDir);
     video.pause();
@@ -556,7 +562,6 @@
     const playIt = () => {
       video.play().catch(e => {
         console.log(`Action video error: ${src}`, e);
-        // Fallback: just continue
         if (callback) callback();
       });
     };
@@ -567,12 +572,10 @@
     }
     const onEnd = () => {
       video.removeEventListener('ended', onEnd);
-      // Resume idle on the new cell/direction
       playIdleForCell(afterCol, afterRow, afterDir);
       if (callback) callback();
     };
     video.addEventListener('ended', onEnd);
-    // Safety timeout
     setTimeout(() => {
       if (!video.loop && !video.ended) {
         video.removeEventListener('ended', onEnd);
@@ -582,9 +585,7 @@
     }, duration + 500);
   }
 
-  // Convenience wrappers
   function playMoveForward(fromCol, fromRow, dir, toCol, toRow, duration, callback) {
-    // forward action: same direction as movement
     playAction(fromCol, fromRow, 'forward', dir, duration, toCol, toRow, dir, callback);
   }
 
@@ -620,7 +621,6 @@
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    
     const cellW = w / 4;
     const cellH = h / 4;
     const goalX = state.goal.col * cellW;
@@ -653,7 +653,7 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // --------------------------------------------------------------
-  // INTERPRETER (unchanged, supports variables, loops, functions)
+  // INTERPRETER (unchanged)
   // --------------------------------------------------------------
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
@@ -824,9 +824,9 @@
   }
   
   // --------------------------------------------------------------
-  // EXECUTION ENGINE WITH DIRECTION‑AWARE VIDEOS
+  // EXECUTION ENGINE
   // --------------------------------------------------------------
-  const ACTION_DURATION = 800; // adjust to match your video lengths
+  const ACTION_DURATION = 800;
 
   function runCode() {
     if (state.running) return;
@@ -848,7 +848,6 @@
     document.getElementById('btn-run').textContent = '■ STOP';
     setStatus('RUNNING');
     
-    // Simulate movement and turns to build the queue
     const simPos = { ...state.pos };
     let simDir = state.dir;
     const simMoves = [];
@@ -896,7 +895,6 @@
       logConsole(`  move_forward() → ${colName(move.to.col)}${move.to.row+1}`, 'log-exec');
       playMoveForward(move.from.col, move.from.row, move.dir, move.to.col, move.to.row, ACTION_DURATION, () => {
         state.pos = { ...move.to };
-        // direction stays the same
         refreshUI();
         executeQueue(moves, idx+1, done);
       });
@@ -1021,6 +1019,23 @@
     document.getElementById('code-highlight').innerHTML = highlightSyntax(code);
   }
   
+  // Flashing instructions tab until first click
+  let instructionsClicked = false;
+  const instructionsTab = document.getElementById('instructions-tab');
+  function stopFlashing() {
+    if (!instructionsClicked) {
+      instructionsClicked = true;
+      instructionsTab.classList.remove('tab-flash');
+    }
+  }
+  // Add flashing class initially
+  instructionsTab.classList.add('tab-flash');
+  // Remove flashing when tab is clicked
+  instructionsTab.addEventListener('click', () => {
+    stopFlashing();
+    switchTab('instructions');
+  });
+  
   function switchTab(tabId) {
     const codePane = document.getElementById('code-pane');
     const instrPane = document.getElementById('instructions-pane');
@@ -1063,7 +1078,16 @@
     ctx = canvas.getContext('2d');
     resizeCanvas();
     initEditor();
-    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => switchTab(tab.dataset.tab)));
+    document.querySelectorAll('.tab').forEach(tab => {
+      if (tab.getAttribute('data-tab') !== 'instructions') {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+      }
+    });
+    // Also add click for code tab (already handled but ensure it stops flashing if clicked)
+    document.querySelector('.tab[data-tab="code"]').addEventListener('click', () => {
+      stopFlashing();
+      switchTab('code');
+    });
     document.getElementById('btn-run').addEventListener('click', () => {
       if (state.running) {
         state.running = false;
