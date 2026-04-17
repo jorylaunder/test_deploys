@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N.!</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -82,14 +82,14 @@
     background: #000;
   }
 
-  #action-video {
+  #video-a, #video-b {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    z-index: 1;
+    transition: opacity 0.05s linear;
   }
 
   #goal-overlay {
@@ -98,7 +98,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 2;
+    z-index: 3;
     pointer-events: none;
   }
 
@@ -108,7 +108,7 @@
     font-size: 13px;
     color: var(--textdim);
     font-family: 'VT323', monospace;
-    z-index: 3;
+    z-index: 4;
     text-shadow: 0 0 4px black;
   }
   .coord-labels-x { top: -20px; left: 0; width: 100%; justify-content: space-around; }
@@ -438,7 +438,8 @@
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
-      <video id="action-video" muted playsinline autoplay loop></video>
+      <video id="video-a" muted playsinline autoplay loop></video>
+      <video id="video-b" muted playsinline autoplay loop style="opacity:0;"></video>
       <canvas id="goal-overlay"></canvas>
       <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
       <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
@@ -506,57 +507,111 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM
+  // VIDEO SYSTEM — dual-buffer crossfade to eliminate black flash
   // ==============================================================
-  const video = document.getElementById('action-video');
-  const canvas = document.getElementById('goal-overlay');
-  let ctx;
+  let activeVideo = document.getElementById('video-a');
+  let bufferVideo = document.getElementById('video-b');
+
+  // Stack active on top, buffer underneath
+  activeVideo.style.zIndex = 2;
+  bufferVideo.style.zIndex = 1;
+
+  function swapVideos() {
+    activeVideo.style.zIndex = 1;
+    activeVideo.style.opacity = 0;
+    bufferVideo.style.zIndex = 2;
+    bufferVideo.style.opacity = 1;
+    [activeVideo, bufferVideo] = [bufferVideo, activeVideo];
+  }
+
+  function preloadIntoBuffer(src) {
+    return new Promise((resolve) => {
+      if (bufferVideo.getAttribute('data-src') === src && bufferVideo.readyState >= 3) {
+        resolve(); return;
+      }
+      bufferVideo.setAttribute('data-src', src);
+      bufferVideo.src = src;
+      bufferVideo.loop = false;
+      bufferVideo.load();
+      if (bufferVideo.readyState >= 3) { resolve(); return; }
+      bufferVideo.addEventListener('canplaythrough', resolve, { once: true });
+      bufferVideo.addEventListener('error', resolve, { once: true });
+    });
+  }
 
   function getVideoPath(col, row, action, dir = null) {
     if (dir && (action === 'idle' || action === 'forward' || action === 'turn_left' || action === 'turn_right')) {
       return `videos/cell_${col}_${row}_${action}_${dir}.mp4`;
-    } else {
-      return `videos/cell_${col}_${row}_${action}.mp4`;
     }
+    return `videos/cell_${col}_${row}_${action}.mp4`;
   }
 
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, 'idle', dir);
-    if (video.src !== src) {
-      video.pause();
-      video.src = src;
-      video.loop = true;
-      video.load();
-      const playIt = () => { video.play().catch(e => console.log(`Idle play error for ${src}`, e)); };
-      if (video.readyState >= 3) playIt();
-      else video.addEventListener('canplaythrough', playIt, { once: true });
-    } else if (video.paused) video.play().catch(e => {});
+    // Already playing this idle — do nothing
+    if (activeVideo.getAttribute('data-src') === src) {
+      activeVideo.loop = true;
+      if (activeVideo.paused) activeVideo.play().catch(() => {});
+      return;
+    }
+    // If buffer already has it ready, swap immediately
+    if (bufferVideo.getAttribute('data-src') === src && bufferVideo.readyState >= 3) {
+      bufferVideo.loop = true;
+      bufferVideo.currentTime = 0;
+      bufferVideo.play().catch(() => {});
+      swapVideos();
+      return;
+    }
+    preloadIntoBuffer(src).then(() => {
+      bufferVideo.loop = true;
+      bufferVideo.currentTime = 0;
+      bufferVideo.play().catch(() => {});
+      swapVideos();
+    });
   }
 
   function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
     const src = getVideoPath(actionCol, actionRow, action, actionDir);
-    video.pause();
-    video.loop = false;
-    video.src = src;
-    video.load();
-    const playIt = () => {
-      video.play().catch(e => { console.log(`Action video error: ${src}`, e); if (callback) callback(); });
-    };
-    if (video.readyState >= 3) playIt();
-    else video.addEventListener('canplaythrough', playIt, { once: true });
-    const onEnd = () => {
-      video.removeEventListener('ended', onEnd);
-      playIdleForCell(afterCol, afterRow, afterDir);
-      if (callback) callback();
-    };
-    video.addEventListener('ended', onEnd);
-    setTimeout(() => {
-      if (!video.loop && !video.ended) {
-        video.removeEventListener('ended', onEnd);
-        playIdleForCell(afterCol, afterRow, afterDir);
+    const idleSrc = getVideoPath(afterCol, afterRow, 'idle', afterDir);
+
+    preloadIntoBuffer(src).then(() => {
+      bufferVideo.loop = false;
+      bufferVideo.currentTime = 0;
+      bufferVideo.play().catch(() => {});
+      swapVideos();
+
+      // Start preloading the next idle into buffer ~100ms into the action clip
+      // so it's ready the moment the action ends
+      setTimeout(() => {
+        if (bufferVideo.getAttribute('data-src') !== idleSrc) {
+          bufferVideo.setAttribute('data-src', idleSrc);
+          bufferVideo.src = idleSrc;
+          bufferVideo.loop = true;
+          bufferVideo.load();
+        }
+      }, 100);
+
+      const finish = () => {
+        activeVideo.removeEventListener('ended', finish);
+        bufferVideo.currentTime = 0;
+        bufferVideo.play().catch(() => {});
+        swapVideos();
         if (callback) callback();
-      }
-    }, duration + 500);
+      };
+
+      activeVideo.addEventListener('ended', finish, { once: true });
+
+      // Fallback in case 'ended' doesn't fire
+      setTimeout(() => {
+        if (!activeVideo.ended && !activeVideo.loop) {
+          activeVideo.removeEventListener('ended', finish);
+          bufferVideo.currentTime = 0;
+          bufferVideo.play().catch(() => {});
+          swapVideos();
+          if (callback) callback();
+        }
+      }, duration + 500);
+    });
   }
 
   function playMoveForward(fromCol, fromRow, dir, toCol, toRow, duration, callback) {
@@ -578,6 +633,9 @@
   // ==============================================================
   // OVERLAY
   // ==============================================================
+  const canvas = document.getElementById('goal-overlay');
+  let ctx;
+
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
     const rect = container.getBoundingClientRect();
@@ -620,7 +678,6 @@
   // INTERPRETER UTILITIES
   // ==============================================================
 
-  // Serialize any value to a string representation for evaluateExpression
   function serializeVal(val) {
     if (val === null) return 'null';
     if (val === true) return 'true';
@@ -630,11 +687,9 @@
     return String(val);
   }
 
-  // Evaluate a Python-ish expression in the context of scope
   function evaluateExpression(expr, scope) {
     expr = expr.trim();
 
-    // len(x)
     const lenMatch = expr.match(/^len\((.+)\)$/);
     if (lenMatch) {
       const inner = evaluateExpression(lenMatch[1], scope);
@@ -643,10 +698,8 @@
       return 0;
     }
 
-    // tuple literal: (a, b) or (a, b, c)
     const tupleMatch = expr.match(/^\((.+)\)$/);
     if (tupleMatch) {
-      // only treat as tuple if it contains a comma at the top level
       const inner = tupleMatch[1];
       const parts = splitTopLevel(inner, ',');
       if (parts.length >= 2) {
@@ -654,7 +707,6 @@
       }
     }
 
-    // list literal: [a, b, c]
     const listMatch = expr.match(/^\[(.+)?\]$/);
     if (listMatch && listMatch[1] !== undefined) {
       const parts = splitTopLevel(listMatch[1], ',');
@@ -662,7 +714,6 @@
     }
     if (expr === '[]') return [];
 
-    // "x in y" membership test
     const inMatch = expr.match(/^(.+?)\s+in\s+(.+)$/);
     if (inMatch) {
       const needle = evaluateExpression(inMatch[1].trim(), scope);
@@ -673,7 +724,6 @@
       return false;
     }
 
-    // "x not in y"  — handled via JS replacement below, but catch here too
     const notInMatch = expr.match(/^(.+?)\s+not\s+in\s+(.+)$/);
     if (notInMatch) {
       const needle = evaluateExpression(notInMatch[1].trim(), scope);
@@ -684,7 +734,6 @@
       return true;
     }
 
-    // Replace Python keywords and identifiers with JS equivalents
     let replaced = expr.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
       if (match === 'True') return 'true';
       if (match === 'False') return 'false';
@@ -701,7 +750,6 @@
     try { return new Function('return (' + replaced + ')')(); } catch(e) { return 0; }
   }
 
-  // Split a string by a delimiter, respecting nested brackets/parens
   function splitTopLevel(str, delim) {
     const parts = [];
     let depth = 0, current = '';
@@ -715,7 +763,6 @@
     return parts;
   }
 
-  // Resolve an indexed assignment target like vis[i][j]
   function resolveIndexedTarget(expr, scope) {
     let match = expr.match(/^([a-zA-Z_][a-zA-Z0-9_]*)((?:\[[^\]]+\])+)$/);
     if (!match) return { target: null, indices: null };
@@ -751,9 +798,7 @@
     return false;
   }
 
-  // Handle obj.method() calls — obj can be any expression e.g. vis[i]
   function handleMethodCall(stripped, scope) {
-    // match: <expr>.append(<arg>) or <expr>.pop(<arg>?)
     const match = stripped.match(/^(.+?)\.(append|pop)\(([^)]*)\)$/);
     if (!match) return null;
     const objExpr = match[1].trim();
@@ -788,7 +833,6 @@
       const stripped = line.trimStart();
       if (!stripped || stripped.startsWith('#')) { i++; continue; }
 
-      // --- def ---
       const defMatch = stripped.match(/^def\s+(\w+)\s*\(\)\s*:/);
       if (defMatch) {
         const funcName = defMatch[1];
@@ -807,7 +851,6 @@
         continue;
       }
 
-      // --- user function call (no args) ---
       const callMatch = stripped.match(/^(\w+)\(\)$/);
       if (callMatch && !['move_forward','turn_left','turn_right','len'].includes(callMatch[1])) {
         const funcName = callMatch[1];
@@ -819,11 +862,9 @@
         i++; continue;
       }
 
-      // --- method call ---
       const methodResult = handleMethodCall(stripped, scope);
       if (methodResult !== null) { i++; continue; }
 
-      // --- for loop ---
       const forMatch = stripped.match(/^for\s+(\w+)\s+in\s+range\((.+)\)\s*:/);
       if (forMatch) {
         const varName = forMatch[1];
@@ -853,7 +894,6 @@
         continue;
       }
 
-      // --- for var in list ---
       const forInMatch = stripped.match(/^for\s+(\w+)\s+in\s+(.+)\s*:/);
       if (forInMatch) {
         const varName = forInMatch[1];
@@ -877,7 +917,6 @@
         continue;
       }
 
-      // --- while ---
       const whileMatch = stripped.match(/^while\s+(.+)\s*:/);
       if (whileMatch) {
         const condition = whileMatch[1];
@@ -901,7 +940,6 @@
         continue;
       }
 
-      // --- if/elif/else ---
       if (stripped.match(/^if\s+.+:/) || stripped.match(/^elif\s+.+:/) || stripped.match(/^else\s*:/)) {
         const indent = line.length - stripped.length;
         const blocks = [];
@@ -937,7 +975,6 @@
         continue;
       }
 
-      // --- tuple unpacking: a, b = expr ---
       const unpackMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)+)\s*=\s*(.+)$/);
       if (unpackMatch) {
         const names = unpackMatch[1].split(',').map(s => s.trim());
@@ -948,21 +985,18 @@
         i++; continue;
       }
 
-      // --- indexed assignment: vis[i][j] = x ---
       const assignMatch = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*(?:\[[^\]]+\])+)\s*=\s*(.+)$/);
       if (assignMatch) {
         assignValue(assignMatch[1], evaluateExpression(assignMatch[2], scope), scope);
         i++; continue;
       }
 
-      // --- simple assignment ---
       const simpleAssign = stripped.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
       if (simpleAssign) {
         scope[simpleAssign[1]] = evaluateExpression(simpleAssign[2], scope);
         i++; continue;
       }
 
-      // --- print ---
       const printMatch = stripped.match(/^print\((.*)\)$/);
       if (printMatch) {
         const val = evaluateExpression(printMatch[1], scope);
@@ -970,7 +1004,6 @@
         i++; continue;
       }
 
-      // --- built-in actions ---
       if (stripped === 'move_forward()') { actions.push('move_forward'); i++; continue; }
       if (stripped === 'turn_left()') { actions.push('turn_left'); i++; continue; }
       if (stripped === 'turn_right()') { actions.push('turn_right'); i++; continue; }
@@ -1197,72 +1230,48 @@
   function buildInstructions() {
     const container = document.getElementById('instructions-content');
     const sections = [
-      {
-        type: 'heading', text: 'MOVEMENT'
-      },
-      {
-        type: 'lines', items: [
-          'move_forward()   — move one cell in facing direction',
-          'turn_left()      — rotate 90° counter-clockwise',
-          'turn_right()     — rotate 90° clockwise',
-        ]
-      },
-      {
-        type: 'heading', text: 'VARIABLES'
-      },
-      {
-        type: 'lines', items: [
-          'current_position — returns [col, row]  e.g. [0, 2]',
-          'goal_position    — returns [col, row]  e.g. [3, 1]',
-        ]
-      },
-      {
-        type: 'heading', text: 'BUILT-INS'
-      },
-      {
-        type: 'lines', items: [
-          'len(x)           — length of a list',
-          'print(x)         — output to console',
-          'range(n)         — 0..n-1',
-          'range(a, b)      — a..b-1',
-        ]
-      },
-      {
-        type: 'heading', text: 'DATA STRUCTURES'
-      },
-      {
-        type: 'lines', items: [
-          'Lists:   x = []  /  x.append(v)  /  x.pop(0)',
-          'Tuples:  t = (1, 2)  — stored as lists internally',
-          'Unpack:  a, b = some_list',
-          '2D list: grid[i][j] = value',
-          'Test:    val in my_list   →  True/False',
-          '         val not in my_list',
-        ]
-      },
-      {
-        type: 'heading', text: 'CONTROL FLOW'
-      },
-      {
-        type: 'lines', items: [
-          'if / elif / else',
-          'for x in range(n)',
-          'for item in my_list',
-          'while condition',
-          'def my_func():   (no arguments)',
-        ]
-      },
-      {
-        type: 'heading', text: 'NOTES'
-      },
-      {
-        type: 'lines', items: [
-          'Max 500 actions per run.',
-          'Max 200 iterations per while loop.',
-          'Functions take no arguments.',
-          'Ctrl+Enter to run code.',
-        ]
-      },
+      { type: 'heading', text: 'MOVEMENT' },
+      { type: 'lines', items: [
+        'move_forward()   — move one cell in facing direction',
+        'turn_left()      — rotate 90° counter-clockwise',
+        'turn_right()     — rotate 90° clockwise',
+      ]},
+      { type: 'heading', text: 'VARIABLES' },
+      { type: 'lines', items: [
+        'current_position — returns [col, row]  e.g. [0, 2]',
+        'goal_position    — returns [col, row]  e.g. [3, 1]',
+      ]},
+      { type: 'heading', text: 'BUILT-INS' },
+      { type: 'lines', items: [
+        'len(x)           — length of a list',
+        'print(x)         — output to console',
+        'range(n)         — 0..n-1',
+        'range(a, b)      — a..b-1',
+      ]},
+      { type: 'heading', text: 'DATA STRUCTURES' },
+      { type: 'lines', items: [
+        'Lists:   x = []  /  x.append(v)  /  x.pop(0)',
+        'Tuples:  t = (1, 2)  — stored as lists internally',
+        'Unpack:  a, b = some_list',
+        '2D list: grid[i][j] = value',
+        'Test:    val in my_list   →  True/False',
+        '         val not in my_list',
+      ]},
+      { type: 'heading', text: 'CONTROL FLOW' },
+      { type: 'lines', items: [
+        'if / elif / else',
+        'for x in range(n)',
+        'for item in my_list',
+        'while condition',
+        'def my_func():   (no arguments)',
+      ]},
+      { type: 'heading', text: 'NOTES' },
+      { type: 'lines', items: [
+        'Max 500 actions per run.',
+        'Max 200 iterations per while loop.',
+        'Functions take no arguments.',
+        'Ctrl+Enter to run code.',
+      ]},
     ];
 
     let html = '';
@@ -1271,11 +1280,6 @@
         html += `<div class="instr-heading">${escapeHtml(sec.text)}</div>`;
       } else if (sec.type === 'lines') {
         sec.items.forEach(l => { html += `<div class="instr-line">${escapeHtml(l)}</div>`; });
-        html += '<div style="height:4px"></div>';
-      } else if (sec.type === 'comment') {
-        html += `<div class="comment-line">${escapeHtml(sec.text)}</div>`;
-      } else if (sec.type === 'example') {
-        sec.items.forEach(l => { html += `<div class="instr-example">${escapeHtml(l)}</div>`; });
         html += '<div style="height:4px"></div>';
       }
     }
