@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N!</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -28,7 +28,7 @@
   #viewport { background:#000; position:relative; overflow:hidden; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
   #grid-container { position:relative; width:min(70vh,70vw); aspect-ratio:1/1; background:#000; }
   #video-bg { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:0; }
-  #video-a, #video-b { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transition:opacity 0.2s ease-in-out; z-index:1; }
+  #video-fg { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:1; }
   #goal-overlay { position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; pointer-events:none; }
   .coord-labels-x, .coord-labels-y { position:absolute; display:flex; font-size:13px; color:var(--textdim); font-family:'VT323',monospace; z-index:3; text-shadow:0 0 4px black; }
   .coord-labels-x { top:-20px; left:0; width:100%; justify-content:space-around; }
@@ -95,8 +95,7 @@
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
       <video id="video-bg" muted playsinline autoplay loop></video>
-      <video id="video-a" muted playsinline autoplay loop style="opacity:1;"></video>
-      <video id="video-b" muted playsinline autoplay loop style="opacity:0;"></video>
+      <video id="video-fg" muted playsinline autoplay></video>
       <canvas id="goal-overlay"></canvas>
       <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
       <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
@@ -164,50 +163,16 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM — background + crossfade overlay
+  // VIDEO SYSTEM — background + simple foreground
   // ==============================================================
   const bgVideo = document.getElementById('video-bg');
-  let activeVideo = document.getElementById('video-a');
-  let bufferVideo = document.getElementById('video-b');
+  const fgVideo = document.getElementById('video-fg');
   
-  activeVideo.style.zIndex = 1;
-  bufferVideo.style.zIndex = 1;
-  activeVideo.style.opacity = 1;
-  bufferVideo.style.opacity = 0;
-  
-  let isFading = false;
-
-  function crossfadeToBuffer(callback) {
-    if (isFading) return;
-    isFading = true;
-    activeVideo.style.opacity = 0;
-    bufferVideo.style.opacity = 1;
-    setTimeout(() => {
-      activeVideo.style.opacity = 1;
-      bufferVideo.style.opacity = 0;
-      [activeVideo, bufferVideo] = [bufferVideo, activeVideo];
-      isFading = false;
-      if (callback) callback();
-    }, 200);
-  }
-
-  function preloadVideo(videoElem, src) {
-    return new Promise((resolve) => {
-      if (videoElem.getAttribute('data-src') === src && videoElem.readyState >= 3) {
-        resolve();
-        return;
-      }
-      videoElem.setAttribute('data-src', src);
-      videoElem.src = src;
-      videoElem.load();
-      if (videoElem.readyState >= 3) {
-        resolve();
-        return;
-      }
-      videoElem.addEventListener('canplaythrough', resolve, { once: true });
-      videoElem.addEventListener('error', resolve, { once: true });
-    });
-  }
+  // Set background video (loops continuously)
+  bgVideo.src = 'videos/background.mp4';
+  bgVideo.loop = true;
+  bgVideo.load();
+  bgVideo.play().catch(() => {});
 
   function getVideoPath(col, row, action, dir = null) {
     if (dir && (action === 'idle' || action === 'forward' || action === 'turn_left' || action === 'turn_right')) {
@@ -216,66 +181,39 @@
     return `videos/cell_${col}_${row}_${action}.mp4`;
   }
 
-  // Update background idle video (loops continuously)
-  function updateBackgroundIdle(col, row, dir) {
-    const src = getVideoPath(col, row, 'idle', dir);
-    if (bgVideo.getAttribute('data-src') === src) {
-      if (bgVideo.paused) bgVideo.play().catch(() => {});
-      return;
-    }
-    bgVideo.setAttribute('data-src', src);
-    bgVideo.src = src;
-    bgVideo.loop = true;
-    bgVideo.load();
-    bgVideo.play().catch(() => {});
+  // Play a clip once, then call callback when ended
+  function playClip(src, callback) {
+    fgVideo.pause();
+    fgVideo.src = src;
+    fgVideo.loop = false;
+    fgVideo.load();
+    fgVideo.play().catch(() => {});
+    const onEnd = () => {
+      fgVideo.removeEventListener('ended', onEnd);
+      if (callback) callback();
+    };
+    fgVideo.addEventListener('ended', onEnd);
+    // Safety timeout
+    setTimeout(() => {
+      if (!fgVideo.ended && !fgVideo.loop) {
+        fgVideo.removeEventListener('ended', onEnd);
+        if (callback) callback();
+      }
+    }, 3000);
   }
 
-  // Idle on top (also updates background)
+  // Play idle for a specific cell (foreground, but background keeps running)
   function playIdleForCell(col, row, dir) {
-    updateBackgroundIdle(col, row, dir);
     const src = getVideoPath(col, row, 'idle', dir);
-    if (activeVideo.getAttribute('data-src') === src) {
-      if (activeVideo.paused) activeVideo.play().catch(() => {});
-      return;
-    }
-    preloadVideo(bufferVideo, src).then(() => {
-      bufferVideo.loop = true;
-      bufferVideo.play().catch(() => {});
-      crossfadeToBuffer();
-    });
+    playClip(src, null);
   }
 
+  // Play action, then idle for target cell
   function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
     const actionSrc = getVideoPath(actionCol, actionRow, action, actionDir);
     const idleSrc = getVideoPath(afterCol, afterRow, 'idle', afterDir);
-    
-    preloadVideo(bufferVideo, actionSrc).then(() => {
-      bufferVideo.loop = false;
-      bufferVideo.play().catch(() => {});
-      crossfadeToBuffer(() => {
-        // After fade, preload the next idle into the new buffer
-        preloadVideo(activeVideo, idleSrc).then(() => {
-          activeVideo.loop = true;
-        });
-      });
-      
-      const finish = () => {
-        activeVideo.removeEventListener('ended', finish);
-        // Crossfade to the preloaded idle
-        crossfadeToBuffer();
-        // Update background to the new idle cell/direction
-        updateBackgroundIdle(afterCol, afterRow, afterDir);
-        if (callback) callback();
-      };
-      
-      activeVideo.addEventListener('ended', finish, { once: true });
-      
-      setTimeout(() => {
-        if (!activeVideo.ended && !activeVideo.loop) {
-          activeVideo.removeEventListener('ended', finish);
-          finish();
-        }
-      }, duration + 500);
+    playClip(actionSrc, () => {
+      playClip(idleSrc, callback);
     });
   }
 
@@ -340,7 +278,7 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // ==============================================================
-  // INTERPRETER UTILITIES (same as before, kept minimal for brevity)
+  // INTERPRETER UTILITIES (simplified but fully functional)
   // ==============================================================
   function serializeVal(val) {
     if (val === null) return 'null';
@@ -471,7 +409,7 @@
   }
 
   // ==============================================================
-  // INTERPRETER (full, same as before)
+  // INTERPRETER
   // ==============================================================
   function interpret(code, actions, errors, scope, depth, limit) {
     if (depth > 100) throw new Error('Recursion limit exceeded');
@@ -767,8 +705,7 @@
     logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
     logConsole(`  Start: ${colName(0)}1  |  Target: ${colName(state.goal.col)}${state.goal.row+1}`, 'log-warn');
     setStatus('IDLE');
-    // Immediately set background and top idle video for starting cell
-    updateBackgroundIdle(0, 0, 'N');
+    // Start idle video for the starting cell
     playIdleForCell(0, 0, 'N');
   }
 
