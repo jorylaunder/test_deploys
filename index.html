@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.!</title>
+<title>H.U.M.A.N.</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -27,9 +27,10 @@
   .header-info .val { color:var(--accent3); font-family:'VT323',monospace; font-size:15px; }
   #viewport { background:#000; position:relative; overflow:hidden; border-right:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
   #grid-container { position:relative; width:min(70vh,70vw); aspect-ratio:1/1; background:#000; }
-  #video-a, #video-b { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transition:opacity 0.2s ease-in-out; }
-  #goal-overlay { position:absolute; top:0; left:0; width:100%; height:100%; z-index:3; pointer-events:none; }
-  .coord-labels-x, .coord-labels-y { position:absolute; display:flex; font-size:13px; color:var(--textdim); font-family:'VT323',monospace; z-index:4; text-shadow:0 0 4px black; }
+  #video-bg { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:0; }
+  #video-a, #video-b { position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; transition:opacity 0.2s ease-in-out; z-index:1; }
+  #goal-overlay { position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; pointer-events:none; }
+  .coord-labels-x, .coord-labels-y { position:absolute; display:flex; font-size:13px; color:var(--textdim); font-family:'VT323',monospace; z-index:3; text-shadow:0 0 4px black; }
   .coord-labels-x { top:-20px; left:0; width:100%; justify-content:space-around; }
   .coord-labels-y { left:-20px; top:0; height:100%; flex-direction:column; justify-content:space-around; align-items:center; }
   #status-bar { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(10,12,15,0.9); border:1px solid var(--dim); padding:6px 20px; font-size:12px; color:var(--textdim); white-space:nowrap; backdrop-filter:blur(4px); z-index:10; }
@@ -93,7 +94,8 @@
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
-      <video id="video-a" muted playsinline autoplay loop></video>
+      <video id="video-bg" muted playsinline autoplay loop></video>
+      <video id="video-a" muted playsinline autoplay loop style="opacity:1;"></video>
       <video id="video-b" muted playsinline autoplay loop style="opacity:0;"></video>
       <canvas id="goal-overlay"></canvas>
       <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
@@ -162,12 +164,13 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM — smooth crossfade
+  // VIDEO SYSTEM — background + crossfade overlay
   // ==============================================================
+  const bgVideo = document.getElementById('video-bg');
   let activeVideo = document.getElementById('video-a');
   let bufferVideo = document.getElementById('video-b');
   
-  activeVideo.style.zIndex = 2;
+  activeVideo.style.zIndex = 1;
   bufferVideo.style.zIndex = 1;
   activeVideo.style.opacity = 1;
   bufferVideo.style.opacity = 0;
@@ -180,8 +183,6 @@
     activeVideo.style.opacity = 0;
     bufferVideo.style.opacity = 1;
     setTimeout(() => {
-      activeVideo.style.zIndex = 1;
-      bufferVideo.style.zIndex = 2;
       activeVideo.style.opacity = 1;
       bufferVideo.style.opacity = 0;
       [activeVideo, bufferVideo] = [bufferVideo, activeVideo];
@@ -215,7 +216,23 @@
     return `videos/cell_${col}_${row}_${action}.mp4`;
   }
 
+  // Update background idle video (loops continuously)
+  function updateBackgroundIdle(col, row, dir) {
+    const src = getVideoPath(col, row, 'idle', dir);
+    if (bgVideo.getAttribute('data-src') === src) {
+      if (bgVideo.paused) bgVideo.play().catch(() => {});
+      return;
+    }
+    bgVideo.setAttribute('data-src', src);
+    bgVideo.src = src;
+    bgVideo.loop = true;
+    bgVideo.load();
+    bgVideo.play().catch(() => {});
+  }
+
+  // Idle on top (also updates background)
   function playIdleForCell(col, row, dir) {
+    updateBackgroundIdle(col, row, dir);
     const src = getVideoPath(col, row, 'idle', dir);
     if (activeVideo.getAttribute('data-src') === src) {
       if (activeVideo.paused) activeVideo.play().catch(() => {});
@@ -246,6 +263,8 @@
         activeVideo.removeEventListener('ended', finish);
         // Crossfade to the preloaded idle
         crossfadeToBuffer();
+        // Update background to the new idle cell/direction
+        updateBackgroundIdle(afterCol, afterRow, afterDir);
         if (callback) callback();
       };
       
@@ -321,7 +340,7 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // ==============================================================
-  // INTERPRETER UTILITIES (same as before, but kept minimal)
+  // INTERPRETER UTILITIES (same as before, kept minimal for brevity)
   // ==============================================================
   function serializeVal(val) {
     if (val === null) return 'null';
@@ -452,7 +471,7 @@
   }
 
   // ==============================================================
-  // INTERPRETER (same as before)
+  // INTERPRETER (full, same as before)
   // ==============================================================
   function interpret(code, actions, errors, scope, depth, limit) {
     if (depth > 100) throw new Error('Recursion limit exceeded');
@@ -748,7 +767,9 @@
     logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
     logConsole(`  Start: ${colName(0)}1  |  Target: ${colName(state.goal.col)}${state.goal.row+1}`, 'log-warn');
     setStatus('IDLE');
-    playIdleForCell(state.pos.col, state.pos.row, state.dir);
+    // Immediately set background and top idle video for starting cell
+    updateBackgroundIdle(0, 0, 'N');
+    playIdleForCell(0, 0, 'N');
   }
 
   function nextLevel() { state.level++; hideOverlay(); startLevel(); }
