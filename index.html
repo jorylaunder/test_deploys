@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N.!</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -82,13 +82,19 @@
     background: #000;
   }
 
-  #action-video {
+  /* Video layers: background video behind, action video on top */
+  .video-layer {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  #bg-video {
+    z-index: 0;
+  }
+  #action-video {
     z-index: 1;
   }
 
@@ -438,7 +444,10 @@
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
-      <video id="action-video" muted playsinline autoplay loop></video>
+      <!-- Background video layer -->
+      <video id="bg-video" class="video-layer" muted playsinline autoplay loop></video>
+      <!-- Main action/idle video layer -->
+      <video id="action-video" class="video-layer" muted playsinline autoplay loop></video>
       <canvas id="goal-overlay"></canvas>
       <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
       <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
@@ -506,11 +515,22 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM - ONLY IDLE VIDEOS, NO ACTION VIDEOS
+  // VIDEO SYSTEM - ONLY IDLE VIDEOS + BACKGROUND LAYER
   // ==============================================================
-  const video = document.getElementById('action-video');
+  const bgVideo = document.getElementById('bg-video');
+  const actionVideo = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
   let ctx;
+
+  // Path to background video (must exist)
+  const BACKGROUND_VIDEO_PATH = 'videos/background.mp4';
+
+  function initBackgroundVideo() {
+    bgVideo.src = BACKGROUND_VIDEO_PATH;
+    bgVideo.loop = true;
+    bgVideo.load();
+    bgVideo.play().catch(e => console.log("Background video play error (optional)", e));
+  }
 
   function getVideoPath(col, row, dir) {
     return `videos/cell_${col}_${row}_idle_${dir}.mp4`;
@@ -518,19 +538,17 @@
 
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, dir);
-    // Switch video immediately without waiting for canplaythrough
-    if (video.src !== src) {
-      video.pause();
-      video.src = src;
-      video.loop = true;
-      video.load();
-      // Play right away; if it fails due to not loaded, it'll retry on canplay
-      video.play().catch(e => {
-        // If play fails (e.g., not ready), try again once loaded
-        video.addEventListener('canplaythrough', () => video.play().catch(()=>{}), { once: true });
+    // Switch action video immediately
+    if (actionVideo.src !== src) {
+      actionVideo.pause();
+      actionVideo.src = src;
+      actionVideo.loop = true;
+      actionVideo.load();
+      actionVideo.play().catch(e => {
+        actionVideo.addEventListener('canplaythrough', () => actionVideo.play().catch(()=>{}), { once: true });
       });
-    } else if (video.paused) {
-      video.play().catch(e => {});
+    } else if (actionVideo.paused) {
+      actionVideo.play().catch(e => {});
     }
   }
 
@@ -926,8 +944,10 @@
   }
 
   // ==============================================================
-  // EXECUTION ENGINE - NO DELAYS, IMMEDIATE VIDEO SWITCH
+  // EXECUTION ENGINE - 0.5s delay between actions
   // ==============================================================
+  const ACTION_DELAY_MS = 500;
+  let currentTimeout = null;
 
   function runCode() {
     if (state.running) return;
@@ -994,26 +1014,42 @@
       state.pos = { ...move.to };
       state.dir = move.dir; // direction remains same
       refreshUI();
-      // Switch video instantly to the new cell's idle video with new direction
+      // Switch video instantly to the new cell's idle video
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
-      // Continue to next action with no delay
-      executeQueue(moves, idx+1, done);
+      // Wait 0.5s before next action
+      if (currentTimeout) clearTimeout(currentTimeout);
+      currentTimeout = setTimeout(() => {
+        currentTimeout = null;
+        executeQueue(moves, idx+1, done);
+      }, ACTION_DELAY_MS);
     } else if (move.type === 'turn_left') {
       logConsole(`  turn_left() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       state.dir = move.newDir;
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
-      executeQueue(moves, idx+1, done);
+      if (currentTimeout) clearTimeout(currentTimeout);
+      currentTimeout = setTimeout(() => {
+        currentTimeout = null;
+        executeQueue(moves, idx+1, done);
+      }, ACTION_DELAY_MS);
     } else if (move.type === 'turn_right') {
       logConsole(`  turn_right() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       state.dir = move.newDir;
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
-      executeQueue(moves, idx+1, done);
+      if (currentTimeout) clearTimeout(currentTimeout);
+      currentTimeout = setTimeout(() => {
+        currentTimeout = null;
+        executeQueue(moves, idx+1, done);
+      }, ACTION_DELAY_MS);
     } else if (move.type === 'wall_bump') {
       logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
-      // No video change, just continue (maybe show error? but we removed error video)
-      executeQueue(moves, idx+1, done);
+      // No state change, just delay then continue
+      if (currentTimeout) clearTimeout(currentTimeout);
+      currentTimeout = setTimeout(() => {
+        currentTimeout = null;
+        executeQueue(moves, idx+1, done);
+      }, ACTION_DELAY_MS);
     }
   }
 
@@ -1253,6 +1289,7 @@
     resizeCanvas();
     buildInstructions();
     initEditor();
+    initBackgroundVideo(); // start background video
 
     document.querySelectorAll('.tab').forEach(tab => {
       if (tab.getAttribute('data-tab') !== 'instructions') {
@@ -1264,10 +1301,16 @@
     });
     document.getElementById('btn-run').addEventListener('click', () => {
       if (state.running) {
+        // Stop execution: clear any pending timeout and reset running flag
+        if (currentTimeout) {
+          clearTimeout(currentTimeout);
+          currentTimeout = null;
+        }
         state.running = false;
         document.getElementById('btn-run').classList.remove('running');
         document.getElementById('btn-run').textContent = '▶ RUN';
         setStatus('IDLE');
+        logConsole('> Execution stopped by user.', 'log-warn');
       } else runCode();
     });
     document.getElementById('btn-clear').addEventListener('click', resetCode);
