@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.!</title>
+<title>H.U.M.A.N.</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -507,33 +507,32 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM — dual-buffer crossfade to eliminate black flash
+  // VIDEO SYSTEM — fixed dual-buffer with proper preloading
   // ==============================================================
   let activeVideo = document.getElementById('video-a');
   let bufferVideo = document.getElementById('video-b');
-
-  // Stack active on top, buffer underneath
   activeVideo.style.zIndex = 2;
   bufferVideo.style.zIndex = 1;
 
   function swapVideos() {
     activeVideo.style.zIndex = 1;
-    activeVideo.style.opacity = 0;
     bufferVideo.style.zIndex = 2;
-    bufferVideo.style.opacity = 1;
     [activeVideo, bufferVideo] = [bufferVideo, activeVideo];
   }
 
   function preloadIntoBuffer(src) {
     return new Promise((resolve) => {
       if (bufferVideo.getAttribute('data-src') === src && bufferVideo.readyState >= 3) {
-        resolve(); return;
+        resolve();
+        return;
       }
       bufferVideo.setAttribute('data-src', src);
       bufferVideo.src = src;
-      bufferVideo.loop = false;
       bufferVideo.load();
-      if (bufferVideo.readyState >= 3) { resolve(); return; }
+      if (bufferVideo.readyState >= 3) {
+        resolve();
+        return;
+      }
       bufferVideo.addEventListener('canplaythrough', resolve, { once: true });
       bufferVideo.addEventListener('error', resolve, { once: true });
     });
@@ -548,48 +547,35 @@
 
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, 'idle', dir);
-    // Already playing this idle — do nothing
     if (activeVideo.getAttribute('data-src') === src) {
-      activeVideo.loop = true;
       if (activeVideo.paused) activeVideo.play().catch(() => {});
       return;
     }
-    // If buffer already has it ready, swap immediately
     if (bufferVideo.getAttribute('data-src') === src && bufferVideo.readyState >= 3) {
       bufferVideo.loop = true;
-      bufferVideo.currentTime = 0;
       bufferVideo.play().catch(() => {});
       swapVideos();
       return;
     }
     preloadIntoBuffer(src).then(() => {
       bufferVideo.loop = true;
-      bufferVideo.currentTime = 0;
       bufferVideo.play().catch(() => {});
       swapVideos();
     });
   }
 
   function playAction(actionCol, actionRow, action, actionDir, duration, afterCol, afterRow, afterDir, callback) {
-    const src = getVideoPath(actionCol, actionRow, action, actionDir);
+    const actionSrc = getVideoPath(actionCol, actionRow, action, actionDir);
     const idleSrc = getVideoPath(afterCol, afterRow, 'idle', afterDir);
 
-    preloadIntoBuffer(src).then(() => {
+    preloadIntoBuffer(actionSrc).then(() => {
       bufferVideo.loop = false;
-      bufferVideo.currentTime = 0;
       bufferVideo.play().catch(() => {});
       swapVideos();
 
-      // Start preloading the next idle into buffer ~100ms into the action clip
-      // so it's ready the moment the action ends
-      setTimeout(() => {
-        if (bufferVideo.getAttribute('data-src') !== idleSrc) {
-          bufferVideo.setAttribute('data-src', idleSrc);
-          bufferVideo.src = idleSrc;
-          bufferVideo.loop = true;
-          bufferVideo.load();
-        }
-      }, 100);
+      preloadIntoBuffer(idleSrc).then(() => {
+        bufferVideo.loop = true;
+      });
 
       const finish = () => {
         activeVideo.removeEventListener('ended', finish);
@@ -601,7 +587,6 @@
 
       activeVideo.addEventListener('ended', finish, { once: true });
 
-      // Fallback in case 'ended' doesn't fire
       setTimeout(() => {
         if (!activeVideo.ended && !activeVideo.loop) {
           activeVideo.removeEventListener('ended', finish);
