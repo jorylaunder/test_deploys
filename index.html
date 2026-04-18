@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.!</title>
+<title>H.U.M.A.N.</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -82,7 +82,6 @@
     background: #000;
   }
 
-  /* Video layers: background video behind, action video on top */
   .video-layer {
     position: absolute;
     top: 0;
@@ -91,12 +90,8 @@
     height: 100%;
     object-fit: cover;
   }
-  #bg-video {
-    z-index: 0;
-  }
-  #action-video {
-    z-index: 1;
-  }
+  #bg-video { z-index: 0; }
+  #action-video { z-index: 1; }
 
   #goal-overlay {
     position: absolute;
@@ -108,17 +103,7 @@
     pointer-events: none;
   }
 
-  .coord-labels-x, .coord-labels-y {
-    position: absolute;
-    display: flex;
-    font-size: 13px;
-    color: var(--textdim);
-    font-family: 'VT323', monospace;
-    z-index: 3;
-    text-shadow: 0 0 4px black;
-  }
-  .coord-labels-x { top: -20px; left: 0; width: 100%; justify-content: space-around; }
-  .coord-labels-y { left: -20px; top: 0; height: 100%; flex-direction: column; justify-content: space-around; align-items: center; }
+  /* Removed .coord-labels-x and .coord-labels-y — no more 4x4 labels */
 
   #status-bar {
     position: absolute;
@@ -444,13 +429,10 @@
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
-      <!-- Background video layer -->
       <video id="bg-video" class="video-layer" muted playsinline autoplay loop></video>
-      <!-- Main action/idle video layer -->
       <video id="action-video" class="video-layer" muted playsinline autoplay loop></video>
       <canvas id="goal-overlay"></canvas>
-      <div class="coord-labels-x"><span>A</span><span>B</span><span>C</span><span>D</span></div>
-      <div class="coord-labels-y"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+      <!-- No coordinate labels anymore -->
       <div id="run-progress"></div>
     </div>
     <div id="status-bar">
@@ -498,7 +480,7 @@
 
 <script>
   // ==============================================================
-  // GAME STATE
+  // GAME STATE (4x4 logic unchanged)
   // ==============================================================
   const DIRS = ['N','E','S','W'];
   const DIR_ARROWS = { N:'↑', E:'→', S:'↓', W:'←' };
@@ -515,14 +497,13 @@
   };
 
   // ==============================================================
-  // VIDEO SYSTEM - ONLY IDLE VIDEOS + BACKGROUND LAYER
+  // VIDEO SYSTEM
   // ==============================================================
   const bgVideo = document.getElementById('bg-video');
   const actionVideo = document.getElementById('action-video');
   const canvas = document.getElementById('goal-overlay');
   let ctx;
 
-  // Path to background video (must exist)
   const BACKGROUND_VIDEO_PATH = 'videos/background.mp4';
 
   function initBackgroundVideo() {
@@ -538,7 +519,6 @@
 
   function playIdleForCell(col, row, dir) {
     const src = getVideoPath(col, row, dir);
-    // Switch action video immediately
     if (actionVideo.src !== src) {
       actionVideo.pause();
       actionVideo.src = src;
@@ -553,32 +533,53 @@
   }
 
   // ==============================================================
-  // OVERLAY
+  // DRAWING: smaller orange circle + 12x12 test grid
   // ==============================================================
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
     const rect = container.getBoundingClientRect();
     canvas.width = rect.width;
     canvas.height = rect.height;
-    drawGoalOverlay();
+    drawOverlay();
   }
 
-  function drawGoalOverlay() {
+  function drawOverlay() {
     if (!ctx) return;
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    const cellW = w / 4, cellH = h / 4;
-    const goalX = state.goal.col * cellW, goalY = state.goal.row * cellH;
+    
+    // 1. Draw 12x12 test grid (thin white lines)
+    const cellW = w / 12;
+    const cellH = h / 12;
     ctx.beginPath();
-    ctx.arc(goalX + cellW/2, goalY + cellH/2, Math.min(cellW, cellH) * 0.3, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 12; i++) {
+      const x = i * cellW;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      const y = i * cellH;
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    ctx.stroke();
+
+    // 2. Draw goal circle (based on 4x4 grid, but smaller)
+    const cellW4 = w / 4;
+    const cellH4 = h / 4;
+    const goalX = state.goal.col * cellW4;
+    const goalY = state.goal.row * cellH4;
+    const radius = Math.min(cellW4, cellH4) * 0.1; // 1/3 of previous 0.3 -> 0.1
+    ctx.beginPath();
+    ctx.arc(goalX + cellW4/2, goalY + cellH4/2, radius, 0, 2 * Math.PI);
     ctx.strokeStyle = '#ff6b00';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.stroke();
     ctx.fillStyle = 'rgba(255,107,0,0.4)';
     ctx.fill();
   }
 
-  function refreshUI() { drawGoalOverlay(); updateHUD(); }
+  function refreshUI() { drawOverlay(); updateHUD(); }
 
   function updateHUD() {
     document.getElementById('hdr-level').textContent = String(state.level).padStart(2,'0');
@@ -594,9 +595,8 @@
   function colName(c) { return ['A','B','C','D'][c]; }
 
   // ==============================================================
-  // INTERPRETER UTILITIES (unchanged)
+  // INTERPRETER (unchanged from your version)
   // ==============================================================
-
   function serializeVal(val) {
     if (val === null) return 'null';
     if (val === true) return 'true';
@@ -738,9 +738,6 @@
     return null;
   }
 
-  // ==============================================================
-  // INTERPRETER (unchanged)
-  // ==============================================================
   function interpret(code, actions, errors, scope, depth, limit) {
     if (depth > 100) throw new Error('Recursion limit exceeded');
     const lines = code.split('\n');
@@ -944,7 +941,7 @@
   }
 
   // ==============================================================
-  // EXECUTION ENGINE - 0.5s delay between actions
+  // EXECUTION ENGINE
   // ==============================================================
   const ACTION_DELAY_MS = 500;
   let currentTimeout = null;
@@ -1010,13 +1007,10 @@
 
     if (move.type === 'move_forward') {
       logConsole(`  move_forward() → ${colName(move.to.col)}${move.to.row+1}`, 'log-exec');
-      // Apply state change immediately
       state.pos = { ...move.to };
-      state.dir = move.dir; // direction remains same
+      state.dir = move.dir;
       refreshUI();
-      // Switch video instantly to the new cell's idle video
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
-      // Wait 0.5s before next action
       if (currentTimeout) clearTimeout(currentTimeout);
       currentTimeout = setTimeout(() => {
         currentTimeout = null;
@@ -1044,7 +1038,6 @@
       }, ACTION_DELAY_MS);
     } else if (move.type === 'wall_bump') {
       logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
-      // No state change, just delay then continue
       if (currentTimeout) clearTimeout(currentTimeout);
       currentTimeout = setTimeout(() => {
         currentTimeout = null;
@@ -1110,7 +1103,7 @@
   }
 
   // ==============================================================
-  // EDITOR & SYNTAX HIGHLIGHT
+  // EDITOR
   // ==============================================================
   function initEditor() {
     const ta = document.getElementById('code-input');
@@ -1158,7 +1151,7 @@
   }
 
   // ==============================================================
-  // INSTRUCTIONS
+  // INSTRUCTIONS (unchanged)
   // ==============================================================
   let instructionsClicked = false;
   const instructionsTab = document.getElementById('instructions-tab');
@@ -1172,72 +1165,48 @@
   function buildInstructions() {
     const container = document.getElementById('instructions-content');
     const sections = [
-      {
-        type: 'heading', text: 'MOVEMENT'
-      },
-      {
-        type: 'lines', items: [
+      { type: 'heading', text: 'MOVEMENT' },
+      { type: 'lines', items: [
           'move_forward()   — move one cell in facing direction',
           'turn_left()      — rotate 90° counter-clockwise',
           'turn_right()     — rotate 90° clockwise',
-        ]
-      },
-      {
-        type: 'heading', text: 'VARIABLES'
-      },
-      {
-        type: 'lines', items: [
+        ] },
+      { type: 'heading', text: 'VARIABLES' },
+      { type: 'lines', items: [
           'current_position — returns [col, row]  e.g. [0, 2]',
           'goal_position    — returns [col, row]  e.g. [3, 1]',
-        ]
-      },
-      {
-        type: 'heading', text: 'BUILT-INS'
-      },
-      {
-        type: 'lines', items: [
+        ] },
+      { type: 'heading', text: 'BUILT-INS' },
+      { type: 'lines', items: [
           'len(x)           — length of a list',
           'print(x)         — output to console',
           'range(n)         — 0..n-1',
           'range(a, b)      — a..b-1',
-        ]
-      },
-      {
-        type: 'heading', text: 'DATA STRUCTURES'
-      },
-      {
-        type: 'lines', items: [
+        ] },
+      { type: 'heading', text: 'DATA STRUCTURES' },
+      { type: 'lines', items: [
           'Lists:   x = []  /  x.append(v)  /  x.pop(0)',
           'Tuples:  t = (1, 2)  — stored as lists internally',
           'Unpack:  a, b = some_list',
           '2D list: grid[i][j] = value',
           'Test:    val in my_list   →  True/False',
           '         val not in my_list',
-        ]
-      },
-      {
-        type: 'heading', text: 'CONTROL FLOW'
-      },
-      {
-        type: 'lines', items: [
+        ] },
+      { type: 'heading', text: 'CONTROL FLOW' },
+      { type: 'lines', items: [
           'if / elif / else',
           'for x in range(n)',
           'for item in my_list',
           'while condition',
           'def my_func():   (no arguments)',
-        ]
-      },
-      {
-        type: 'heading', text: 'NOTES'
-      },
-      {
-        type: 'lines', items: [
+        ] },
+      { type: 'heading', text: 'NOTES' },
+      { type: 'lines', items: [
           'Max 500 actions per run.',
           'Max 200 iterations per while loop.',
           'Functions take no arguments.',
           'Ctrl+Enter to run code.',
-        ]
-      },
+        ] },
     ];
 
     let html = '';
@@ -1246,11 +1215,6 @@
         html += `<div class="instr-heading">${escapeHtml(sec.text)}</div>`;
       } else if (sec.type === 'lines') {
         sec.items.forEach(l => { html += `<div class="instr-line">${escapeHtml(l)}</div>`; });
-        html += '<div style="height:4px"></div>';
-      } else if (sec.type === 'comment') {
-        html += `<div class="comment-line">${escapeHtml(sec.text)}</div>`;
-      } else if (sec.type === 'example') {
-        sec.items.forEach(l => { html += `<div class="instr-example">${escapeHtml(l)}</div>`; });
         html += '<div style="height:4px"></div>';
       }
     }
@@ -1279,7 +1243,7 @@
   // ==============================================================
   // INIT
   // ==============================================================
-  window.addEventListener('resize', () => { resizeCanvas(); drawGoalOverlay(); });
+  window.addEventListener('resize', () => { resizeCanvas(); drawOverlay(); });
   document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('grid-container');
     const rect = container.getBoundingClientRect();
@@ -1289,7 +1253,7 @@
     resizeCanvas();
     buildInstructions();
     initEditor();
-    initBackgroundVideo(); // start background video
+    initBackgroundVideo();
 
     document.querySelectorAll('.tab').forEach(tab => {
       if (tab.getAttribute('data-tab') !== 'instructions') {
@@ -1301,11 +1265,7 @@
     });
     document.getElementById('btn-run').addEventListener('click', () => {
       if (state.running) {
-        // Stop execution: clear any pending timeout and reset running flag
-        if (currentTimeout) {
-          clearTimeout(currentTimeout);
-          currentTimeout = null;
-        }
+        if (currentTimeout) { clearTimeout(currentTimeout); currentTimeout = null; }
         state.running = false;
         document.getElementById('btn-run').classList.remove('running');
         document.getElementById('btn-run').textContent = '▶ RUN';
