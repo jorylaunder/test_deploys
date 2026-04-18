@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>H.U.M.A.N.</title>
+<title>H.U.M.A.N.!</title>
 <link rel="icon" type="image/jpeg" href="favicon.jpg">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=VT323&display=swap');
@@ -102,8 +102,6 @@
     z-index: 2;
     pointer-events: none;
   }
-
-  /* Removed .coord-labels-x and .coord-labels-y — no more 4x4 labels */
 
   #status-bar {
     position: absolute;
@@ -432,7 +430,6 @@
       <video id="bg-video" class="video-layer" muted playsinline autoplay loop></video>
       <video id="action-video" class="video-layer" muted playsinline autoplay loop></video>
       <canvas id="goal-overlay"></canvas>
-      <!-- No coordinate labels anymore -->
       <div id="run-progress"></div>
     </div>
     <div id="status-bar">
@@ -497,6 +494,34 @@
   };
 
   // ==============================================================
+  // MAPPING: 4x4 (col, row) -> 12x12 (cellX, cellY)
+  // Provided by user (0-indexed 12x12 grid)
+  // ==============================================================
+  const mapping = {
+    "0,0": { x: 3, y: 7 },
+    "1,0": { x: 5, y: 7 },
+    "2,0": { x: 6, y: 7 },
+    "3,0": { x: 8, y: 7 },
+    "0,1": { x: 3, y: 8 },
+    "1,1": { x: 5, y: 8 },
+    "2,1": { x: 7, y: 8 },
+    "3,1": { x: 9, y: 8 },
+    "0,2": { x: 3, y: 9 },
+    "1,2": { x: 5, y: 9 },
+    "2,2": { x: 7, y: 9 },
+    "3,2": { x: 10, y: 9 },
+    "0,3": { x: 2, y: 10 },
+    "1,3": { x: 5, y: 10 },
+    "2,3": { x: 8, y: 10 },
+    "3,3": { x: 10, y: 10 }
+  };
+
+  function getMappedPosition(col, row) {
+    const key = `${col},${row}`;
+    return mapping[key] || { x: 0, y: 0 }; // fallback to top-left
+  }
+
+  // ==============================================================
   // VIDEO SYSTEM
   // ==============================================================
   const bgVideo = document.getElementById('bg-video');
@@ -533,7 +558,7 @@
   }
 
   // ==============================================================
-  // DRAWING: smaller orange circle + 12x12 test grid
+  // DRAWING: Orange circle at mapped 12x12 cell (no grid lines)
   // ==============================================================
   function resizeCanvas() {
     const container = document.getElementById('grid-container');
@@ -548,30 +573,16 @@
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     
-    // 1. Draw 12x12 test grid (thin white lines)
+    // Get mapped 12x12 cell for current goal
+    const mapped = getMappedPosition(state.goal.col, state.goal.row);
     const cellW = w / 12;
     const cellH = h / 12;
+    const centerX = mapped.x * cellW + cellW / 2;
+    const centerY = mapped.y * cellH + cellH / 2;
+    const radius = Math.min(cellW, cellH) * 0.2; // adjust as needed
+    
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 12; i++) {
-      const x = i * cellW;
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      const y = i * cellH;
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-    }
-    ctx.stroke();
-
-    // 2. Draw goal circle (based on 4x4 grid, but smaller)
-    const cellW4 = w / 4;
-    const cellH4 = h / 4;
-    const goalX = state.goal.col * cellW4;
-    const goalY = state.goal.row * cellH4;
-    const radius = Math.min(cellW4, cellH4) * 0.1; // 1/3 of previous 0.3 -> 0.1
-    ctx.beginPath();
-    ctx.arc(goalX + cellW4/2, goalY + cellH4/2, radius, 0, 2 * Math.PI);
+    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
     ctx.strokeStyle = '#ff6b00';
     ctx.lineWidth = 2;
     ctx.stroke();
