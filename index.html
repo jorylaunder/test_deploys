@@ -93,7 +93,6 @@
   #bg-video { z-index: 0; }
   #action-video { z-index: 1; }
 
-  /* Target image */
   #target-image {
     position: absolute;
     z-index: 2;
@@ -135,10 +134,9 @@
     justify-content: center;
     font-size: 24px;
     backdrop-filter: blur(4px);
-    z-index: 10;
+    z-index: 20;
   }
 
-  /* Credits button (no popup content) */
   .credits-btn {
     position: absolute;
     bottom: 12px;
@@ -431,6 +429,54 @@
     transition: width 0.1s linear;
     z-index: 20;
   }
+
+  /* ── CCTV OVERLAY ── */
+  #cctv-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #cctv-scanlines {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.18) 0px, rgba(0,0,0,0.18) 1px,
+      transparent 1px, transparent 3px
+    );
+  }
+  #cctv-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.78) 100%);
+  }
+  #cctv-noise {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.06;
+  }
+  #cctv-tint {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,255,65,0.04);
+    mix-blend-mode: color;
+  }
+  .cctv-label {
+    position: absolute;
+    color: #00ff41;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    line-height: 1.6;
+    text-shadow: 0 0 6px rgba(0,255,65,0.5);
+  }
+  #cctv-cam    { top: 10px; left: 10px; }
+  #cctv-ts     { top: 10px; right: 10px; text-align: right; }
+  #cctv-rec    { bottom: 38px; left: 10px; }
+  #cctv-sector { bottom: 38px; right: 10px; }
 </style>
 </head>
 <body>
@@ -453,8 +499,20 @@
     <div id="grid-container">
       <video id="bg-video" class="video-layer" muted playsinline autoplay loop></video>
       <video id="action-video" class="video-layer" muted playsinline autoplay loop></video>
-      <!-- Target image -->
       <img id="target-image" src="socks.png" alt="Target">
+
+      <!-- CCTV Overlay -->
+      <div id="cctv-overlay">
+        <div id="cctv-scanlines"></div>
+        <div id="cctv-vignette"></div>
+        <canvas id="cctv-noise"></canvas>
+        <div id="cctv-tint"></div>
+        <div class="cctv-label" id="cctv-cam">CAM-04<br>CH.02</div>
+        <div class="cctv-label" id="cctv-ts"></div>
+        <div class="cctv-label" id="cctv-rec">● REC</div>
+        <div class="cctv-label" id="cctv-sector">SECTOR-7G</div>
+      </div>
+
       <div id="run-progress"></div>
     </div>
     <div id="status-bar">
@@ -463,7 +521,6 @@
       TARGET: <span class="status-val" id="st-target">--</span> &nbsp;|&nbsp;
       STATUS: <span class="status-val" id="st-status">IDLE</span>
     </div>
-    <!-- Credits button (no popup) -->
     <div class="credits-btn" id="credits-btn">📄 CREDITS</div>
   </div>
 
@@ -504,7 +561,7 @@
 
 <script>
   // ==============================================================
-  // GAME STATE (4x4 logic unchanged)
+  // GAME STATE
   // ==============================================================
   const DIRS = ['N','E','S','W'];
   const DIR_ARROWS = { N:'↑', E:'→', S:'↓', W:'←' };
@@ -521,7 +578,7 @@
   };
 
   // ==============================================================
-  // MAPPING: 4x4 -> 12x12 (same as before)
+  // MAPPING: 4x4 -> 12x12
   // ==============================================================
   const mapping = {
     "0,0": { x: 3, y: 7 },
@@ -548,7 +605,7 @@
   }
 
   // ==============================================================
-  // VIDEO SYSTEM (unchanged)
+  // VIDEO SYSTEM
   // ==============================================================
   const bgVideo = document.getElementById('bg-video');
   const actionVideo = document.getElementById('action-video');
@@ -581,7 +638,7 @@
   }
 
   // ==============================================================
-  // TARGET IMAGE POSITIONING (replaces orange circle)
+  // TARGET IMAGE POSITIONING
   // ==============================================================
   const targetImg = document.getElementById('target-image');
 
@@ -596,16 +653,15 @@
     const centerY = mapped.y * cellH + cellH / 2;
     targetImg.style.left = `${centerX}px`;
     targetImg.style.top = `${centerY}px`;
-    // Scale image to roughly the size of the old circle (0.4 * cell size)
     const size = Math.min(cellW, cellH) * 0.8;
     targetImg.style.width = `${size}px`;
     targetImg.style.height = `${size}px`;
   }
 
-  // Also update on window resize
   window.addEventListener('resize', () => {
     updateTargetPosition();
-    updateHUD(); // also refresh HUD in case layout changed
+    updateHUD();
+    resizeCCTVNoise();
   });
 
   // ==============================================================
@@ -621,16 +677,62 @@
     document.getElementById('st-target').textContent = `${colName(state.goal.col)}${state.goal.row+1}`;
     document.getElementById('dir-indicator').textContent = DIR_ARROWS[state.dir];
   }
-  
+
   function colName(c) { return ['A','B','C','D'][c]; }
-  
-  function refreshUI() { 
-    updateHUD(); 
-    updateTargetPosition(); 
+
+  function refreshUI() {
+    updateHUD();
+    updateTargetPosition();
   }
 
   // ==============================================================
-  // INTERPRETER (full, unchanged from your version)
+  // CCTV OVERLAY
+  // ==============================================================
+  function initCCTV() {
+    const canvas = document.getElementById('cctv-noise');
+    const ctx = canvas.getContext('2d');
+
+    function resizeNoise() {
+      canvas.width = canvas.offsetWidth || canvas.parentElement.clientWidth;
+      canvas.height = canvas.offsetHeight || canvas.parentElement.clientHeight;
+    }
+    resizeNoise();
+    window.resizeCCTVNoise = resizeNoise;
+
+    function drawNoise() {
+      const w = canvas.width, h = canvas.height;
+      if (w && h) {
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const v = Math.random() * 255 | 0;
+          d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+      requestAnimationFrame(drawNoise);
+    }
+    drawNoise();
+
+    // Live timestamp + blinking REC
+    const tsEl = document.getElementById('cctv-ts');
+    const recEl = document.getElementById('cctv-rec');
+    let recVisible = true;
+
+    function updateCCTV() {
+      const now = new Date();
+      const d = now.toLocaleDateString('en-GB').replace(/\//g, '-');
+      const t = now.toTimeString().slice(0, 8);
+      if (tsEl) tsEl.textContent = d + '\n' + t;
+      recVisible = !recVisible;
+      if (recEl) recEl.style.opacity = recVisible ? '1' : '0';
+      setTimeout(updateCCTV, 1000);
+    }
+    updateCCTV();
+  }
+
+  // ==============================================================
+  // INTERPRETER
   // ==============================================================
   function serializeVal(val) {
     if (val === null) return 'null';
@@ -976,7 +1078,7 @@
   }
 
   // ==============================================================
-  // EXECUTION ENGINE (unchanged)
+  // EXECUTION ENGINE
   // ==============================================================
   const ACTION_DELAY_MS = 500;
   let currentTimeout = null;
@@ -1047,37 +1149,25 @@
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
       if (currentTimeout) clearTimeout(currentTimeout);
-      currentTimeout = setTimeout(() => {
-        currentTimeout = null;
-        executeQueue(moves, idx+1, done);
-      }, ACTION_DELAY_MS);
+      currentTimeout = setTimeout(() => { currentTimeout = null; executeQueue(moves, idx+1, done); }, ACTION_DELAY_MS);
     } else if (move.type === 'turn_left') {
       logConsole(`  turn_left() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       state.dir = move.newDir;
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
       if (currentTimeout) clearTimeout(currentTimeout);
-      currentTimeout = setTimeout(() => {
-        currentTimeout = null;
-        executeQueue(moves, idx+1, done);
-      }, ACTION_DELAY_MS);
+      currentTimeout = setTimeout(() => { currentTimeout = null; executeQueue(moves, idx+1, done); }, ACTION_DELAY_MS);
     } else if (move.type === 'turn_right') {
       logConsole(`  turn_right() → ${DIR_NAMES[move.newDir]}`, 'log-exec');
       state.dir = move.newDir;
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
       if (currentTimeout) clearTimeout(currentTimeout);
-      currentTimeout = setTimeout(() => {
-        currentTimeout = null;
-        executeQueue(moves, idx+1, done);
-      }, ACTION_DELAY_MS);
+      currentTimeout = setTimeout(() => { currentTimeout = null; executeQueue(moves, idx+1, done); }, ACTION_DELAY_MS);
     } else if (move.type === 'wall_bump') {
       logConsole(`  move_forward() → BLOCKED!`, 'log-warn');
       if (currentTimeout) clearTimeout(currentTimeout);
-      currentTimeout = setTimeout(() => {
-        currentTimeout = null;
-        executeQueue(moves, idx+1, done);
-      }, ACTION_DELAY_MS);
+      currentTimeout = setTimeout(() => { currentTimeout = null; executeQueue(moves, idx+1, done); }, ACTION_DELAY_MS);
     }
   }
 
@@ -1138,7 +1228,7 @@
   }
 
   // ==============================================================
-  // EDITOR & SYNTAX HIGHLIGHT (unchanged)
+  // EDITOR & SYNTAX HIGHLIGHT
   // ==============================================================
   function initEditor() {
     const ta = document.getElementById('code-input');
@@ -1186,7 +1276,7 @@
   }
 
   // ==============================================================
-  // INSTRUCTIONS (unchanged)
+  // INSTRUCTIONS
   // ==============================================================
   let instructionsClicked = false;
   const instructionsTab = document.getElementById('instructions-tab');
@@ -1276,21 +1366,21 @@
   }
 
   // ==============================================================
-  // CREDITS BUTTON (no content)
+  // CREDITS BUTTON
   // ==============================================================
   document.getElementById('credits-btn').addEventListener('click', () => {
-    // intentionally empty – no popup, no content
+    // intentionally empty
   });
 
   // ==============================================================
-  // INITIALIZE EVERYTHING
+  // INITIALIZE
   // ==============================================================
-  window.addEventListener('resize', () => { refreshUI(); });
   document.addEventListener('DOMContentLoaded', () => {
     buildInstructions();
     initEditor();
     initBackgroundVideo();
-    updateTargetPosition(); // initial position
+    initCCTV();
+    updateTargetPosition();
 
     document.querySelectorAll('.tab').forEach(tab => {
       if (tab.getAttribute('data-tab') !== 'instructions') {
