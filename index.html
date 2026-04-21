@@ -479,25 +479,33 @@
   #cctv-sector { bottom: 38px; right: 10px; }
 
   /* ── DIALOGUE POPUP ── */
+  /* Backdrop overlay covering entire screen */
+  #dialogue-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #dialogue-backdrop.hidden {
+    display: none;
+  }
   #dialogue-popup {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 50%;
-    background: rgba(5, 8, 5, 0.96);
-    border-top: 1px solid var(--accent);
-    z-index: 50;
+    position: relative;
+    width: 56vw;
+    max-width: 700px;
+    background: rgba(5, 8, 5, 0.97);
+    border: 1px solid var(--accent);
+    z-index: 501;
     display: flex;
     flex-direction: column;
-    padding: 12px;
-    gap: 10px;
-    backdrop-filter: blur(6px);
-    box-shadow: 0 -4px 30px rgba(0,255,65,0.15);
+    padding: 9px;
+    gap: 8px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 40px rgba(0,255,65,0.25), 0 0 80px rgba(0,255,65,0.08);
     transition: opacity 0.3s;
-  }
-  #dialogue-popup.hidden {
-    display: none;
   }
   #dialogue-popup::before {
     content: 'NEURAL LINK ESTABLISHED';
@@ -512,10 +520,9 @@
   }
   .dialogue-boxes {
     display: flex;
-    flex: 1;
-    gap: 10px;
+    gap: 8px;
     margin-top: 10px;
-    min-height: 0;
+    height: 160px;
   }
   #dialogue-video-box {
     width: 38%;
@@ -582,8 +589,8 @@
     border: 1px solid var(--dim);
     background: rgba(0,0,0,0.5);
     padding: 10px 12px;
-    font-size: 15px;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.6;
     color: var(--accent);
     font-family: 'Share Tech Mono', monospace;
     position: relative;
@@ -696,6 +703,7 @@
     <div class="credits-btn" id="credits-btn">📄 CREDITS</div>
 
     <!-- DIALOGUE POPUP -->
+    <div id="dialogue-backdrop">
     <div id="dialogue-popup">
       <div class="dialogue-boxes">
         <div id="dialogue-video-box">
@@ -710,6 +718,7 @@
         </div>
       </div>
       <button id="dialogue-next-btn">NEXT ⟫</button>
+    </div>
     </div>
   </div>
 
@@ -1641,7 +1650,7 @@
     dialogueStep++;
     if (dialogueStep >= DIALOGUE_LINES.length) {
       // Close popup — game begins
-      dialoguePopup.classList.add('hidden');
+      document.getElementById('dialogue-backdrop').classList.add('hidden');
       talkingVideo.src = '';
       faceIcon.classList.remove('talking');
     } else {
@@ -1652,7 +1661,7 @@
   dialogueNextBtn.addEventListener('click', advanceDialogue);
 
   function initDialogue() {
-    dialoguePopup.classList.remove('hidden');
+    document.getElementById('dialogue-backdrop').classList.remove('hidden');
     dialogueStep = 0;
     startDialogueStep(0);
   }
