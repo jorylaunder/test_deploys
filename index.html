@@ -477,6 +477,178 @@
   #cctv-ts     { top: 24px; right: 10px; text-align: right; }
   #cctv-rec    { bottom: 38px; left: 10px; }
   #cctv-sector { bottom: 38px; right: 10px; }
+
+  /* ── DIALOGUE POPUP ── */
+  #dialogue-popup {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: rgba(5, 8, 5, 0.96);
+    border-top: 1px solid var(--accent);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    gap: 10px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 -4px 30px rgba(0,255,65,0.15);
+    transition: opacity 0.3s;
+  }
+  #dialogue-popup.hidden {
+    display: none;
+  }
+  #dialogue-popup::before {
+    content: 'NEURAL LINK ESTABLISHED';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    opacity: 0.5;
+  }
+  .dialogue-boxes {
+    display: flex;
+    flex: 1;
+    gap: 10px;
+    margin-top: 10px;
+    min-height: 0;
+  }
+  #dialogue-video-box {
+    width: 38%;
+    flex-shrink: 0;
+    border: 1px solid var(--accent);
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 12px rgba(0,255,65,0.2) inset;
+  }
+  #dialogue-video-box::before {
+    content: 'SUBJECT';
+    position: absolute;
+    top: 4px;
+    left: 6px;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    opacity: 0.6;
+    z-index: 2;
+  }
+  #talking-face-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: sepia(0.2) hue-rotate(80deg) saturate(0.7);
+  }
+  #dialogue-video-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--textdim);
+    font-size: 11px;
+    letter-spacing: 1px;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+  }
+  .face-icon {
+    width: 52px;
+    height: 52px;
+    border: 2px solid var(--dim);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    position: relative;
+  }
+  .face-icon.talking {
+    border-color: var(--accent);
+    animation: facePulse 0.4s ease-in-out infinite alternate;
+  }
+  @keyframes facePulse {
+    from { box-shadow: 0 0 4px rgba(0,255,65,0.3); }
+    to   { box-shadow: 0 0 14px rgba(0,255,65,0.8); }
+  }
+  #dialogue-text-box {
+    flex: 1;
+    border: 1px solid var(--dim);
+    background: rgba(0,0,0,0.5);
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  #dialogue-text-box::before {
+    content: 'SIGNAL';
+    position: absolute;
+    top: 4px;
+    left: 6px;
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: var(--textdim);
+    opacity: 0.7;
+  }
+  #dialogue-typed-text {
+    margin-top: 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #dialogue-cursor {
+    display: inline-block;
+    width: 7px;
+    height: 13px;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: cursorBlink 0.6s step-end infinite;
+    margin-left: 1px;
+  }
+  #dialogue-cursor.hidden { display: none; }
+  @keyframes cursorBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  #dialogue-next-btn {
+    align-self: flex-end;
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Orbitron', monospace;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 3px;
+    padding: 7px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #dialogue-next-btn.visible {
+    opacity: 1;
+    pointer-events: all;
+    animation: nextPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes nextPulse {
+    0%, 100% { box-shadow: 0 0 4px rgba(0,255,65,0.3); }
+    50% { box-shadow: 0 0 14px rgba(0,255,65,0.7); }
+  }
+  #dialogue-next-btn:hover {
+    background: rgba(0,255,65,0.1);
+  }
 </style>
 </head>
 <body>
@@ -522,6 +694,23 @@
       STATUS: <span class="status-val" id="st-status">IDLE</span>
     </div>
     <div class="credits-btn" id="credits-btn">📄 CREDITS</div>
+
+    <!-- DIALOGUE POPUP -->
+    <div id="dialogue-popup">
+      <div class="dialogue-boxes">
+        <div id="dialogue-video-box">
+          <video id="talking-face-video" muted playsinline></video>
+          <div id="dialogue-video-placeholder">
+            <div class="face-icon" id="face-icon">🧑</div>
+            <span id="face-status">TRANSMITTING...</span>
+          </div>
+        </div>
+        <div id="dialogue-text-box">
+          <span id="dialogue-typed-text"></span><span id="dialogue-cursor"></span>
+        </div>
+      </div>
+      <button id="dialogue-next-btn">NEXT ⟫</button>
+    </div>
   </div>
 
   <div id="editor-panel">
@@ -1373,6 +1562,102 @@
   });
 
   // ==============================================================
+  // DIALOGUE / INTRO POPUP
+  // ==============================================================
+  const DIALOGUE_LINES = [
+    "HUH!? I feel erm weird. Something is not right. I feel a little trapped. Or like im not in control. Why does everything feel the same? It's too perfect, too ... robotic...",
+    "Strange. Anyway I remember I need to collect my dirty socks. Let me just do that now... AGh! .... I ... uh ..... can't move! Oi you! Help!",
+    "I guess you are going to have to help me move. Please. I erm don't want my mum to get mad at me for leaving my dirty socks out again! Try writing out some functions in main.py. Have a look at instructions.txt for help"
+  ];
+
+  let dialogueStep = 0;
+  let dialogueTypingInterval = null;
+  let dialogueVideoTimeout = null;
+
+  const dialoguePopup   = document.getElementById('dialogue-popup');
+  const dialogueTyped   = document.getElementById('dialogue-typed-text');
+  const dialogueCursor  = document.getElementById('dialogue-cursor');
+  const dialogueNextBtn = document.getElementById('dialogue-next-btn');
+  const talkingVideo    = document.getElementById('talking-face-video');
+  const faceIcon        = document.getElementById('face-icon');
+  const facePlaceholder = document.getElementById('dialogue-video-placeholder');
+
+  function startDialogueStep(stepIndex) {
+    const text = DIALOGUE_LINES[stepIndex];
+    dialogueTyped.textContent = '';
+    dialogueCursor.classList.remove('hidden');
+    dialogueNextBtn.classList.remove('visible');
+
+    // Try to play the talkingface video
+    talkingVideo.src = 'videos/talkingface.mp4';
+    talkingVideo.loop = false;
+    talkingVideo.currentTime = 0;
+    talkingVideo.style.display = 'block';
+    facePlaceholder.style.display = 'none';
+    faceIcon.classList.add('talking');
+
+    const playPromise = talkingVideo.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(() => {
+        // Video not available — show animated placeholder
+        talkingVideo.style.display = 'none';
+        facePlaceholder.style.display = 'flex';
+      });
+    }
+
+    // Type out text over 5000ms
+    const totalDuration = 5000;
+    const chars = text.split('');
+    const intervalMs = totalDuration / chars.length;
+    let charIdx = 0;
+
+    if (dialogueTypingInterval) clearInterval(dialogueTypingInterval);
+    dialogueTypingInterval = setInterval(() => {
+      if (charIdx < chars.length) {
+        dialogueTyped.textContent += chars[charIdx];
+        charIdx++;
+      } else {
+        clearInterval(dialogueTypingInterval);
+        dialogueTypingInterval = null;
+        // Typing done — pause video on last frame, hide cursor, show next button
+        talkingVideo.pause();
+        faceIcon.classList.remove('talking');
+        dialogueCursor.classList.add('hidden');
+        dialogueNextBtn.classList.add('visible');
+      }
+    }, intervalMs);
+
+    // Pause video at 5s mark as safety net
+    if (dialogueVideoTimeout) clearTimeout(dialogueVideoTimeout);
+    dialogueVideoTimeout = setTimeout(() => {
+      talkingVideo.pause();
+      faceIcon.classList.remove('talking');
+    }, totalDuration + 100);
+  }
+
+  function advanceDialogue() {
+    if (dialogueTypingInterval) { clearInterval(dialogueTypingInterval); dialogueTypingInterval = null; }
+    if (dialogueVideoTimeout) { clearTimeout(dialogueVideoTimeout); dialogueVideoTimeout = null; }
+    dialogueStep++;
+    if (dialogueStep >= DIALOGUE_LINES.length) {
+      // Close popup — game begins
+      dialoguePopup.classList.add('hidden');
+      talkingVideo.src = '';
+      faceIcon.classList.remove('talking');
+    } else {
+      startDialogueStep(dialogueStep);
+    }
+  }
+
+  dialogueNextBtn.addEventListener('click', advanceDialogue);
+
+  function initDialogue() {
+    dialoguePopup.classList.remove('hidden');
+    dialogueStep = 0;
+    startDialogueStep(0);
+  }
+
+  // ==============================================================
   // INITIALIZE
   // ==============================================================
   document.addEventListener('DOMContentLoaded', () => {
@@ -1404,6 +1689,8 @@
     document.getElementById('console-clear').addEventListener('click', clearConsole);
     startLevel();
     logConsole('  Ctrl+Enter to execute', 'log-line');
+    // Show intro dialogue
+    initDialogue();
   });
 </script>
 </body>
