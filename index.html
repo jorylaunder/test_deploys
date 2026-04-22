@@ -508,15 +508,7 @@
     transition: opacity 0.3s;
   }
   #dialogue-popup::before {
-    content: 'NEURAL LINK ESTABLISHED';
-    position: absolute;
-    top: 6px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 8px;
-    letter-spacing: 3px;
-    color: var(--accent);
-    opacity: 0.5;
+    content: '';
   }
   .dialogue-boxes {
     display: flex;
@@ -769,11 +761,49 @@
   const DIR_NAMES = { N:'NORTH', E:'EAST', S:'SOUTH', W:'WEST' };
   const MOVE = { N: [0,-1], E: [1,0], S: [0,1], W: [-1,0] };
 
+  // Level definitions: null goal = randomised (endless mode)
+  const LEVEL_DEFS = [
+    // Level 1
+    { startPos:{col:0,row:0}, startDir:'W', goals:[{col:0,row:3}],
+      maxLines:null, requireFunc:false, requireWhile:false, requireForLoop:false,
+      hideSocks:false, multiTarget:false },
+    // Level 2 - for loop required, max 2 lines
+    { startPos:{col:1,row:0}, startDir:'S', goals:[{col:1,row:3}],
+      maxLines:2, requireFunc:false, requireWhile:false, requireForLoop:true,
+      hideSocks:false, multiTarget:false },
+    // Level 3 - max 5 lines
+    { startPos:{col:0,row:3}, startDir:'N', goals:[{col:3,row:0}],
+      maxLines:5, requireFunc:false, requireWhile:false, requireForLoop:false,
+      hideSocks:false, multiTarget:false },
+    // Level 4 - must use a function
+    { startPos:{col:3,row:0}, startDir:'S', goals:[{col:1,row:2}],
+      maxLines:null, requireFunc:true, requireWhile:false, requireForLoop:false,
+      hideSocks:false, multiTarget:false },
+    // Level 5 - function + max 10 lines + two targets
+    { startPos:{col:0,row:0}, startDir:'N', goals:[{col:0,row:3},{col:3,row:0}],
+      maxLines:10, requireFunc:true, requireWhile:false, requireForLoop:false,
+      hideSocks:false, multiTarget:true },
+    // Level 6 - while loop required
+    { startPos:{col:3,row:1}, startDir:'W', goals:[{col:0,row:1}],
+      maxLines:null, requireFunc:false, requireWhile:true, requireForLoop:false,
+      hideSocks:false, multiTarget:false },
+    // Level 7 - invisible socks
+    { startPos:{col:1,row:1}, startDir:'W', goals:[{col:2,row:2}],
+      maxLines:null, requireFunc:false, requireWhile:false, requireForLoop:false,
+      hideSocks:true, multiTarget:false },
+    // Level 8+ = endless random
+    { startPos:null, startDir:null, goals:null,
+      maxLines:null, requireFunc:false, requireWhile:false, requireForLoop:false,
+      hideSocks:false, multiTarget:false }
+  ];
+
   let state = {
     level: 1,
     pos: {col:0, row:0},
     dir: 'N',
-    goal: {col:3, row:3},
+    goal: {col:0, row:3},
+    goals: [{col:0,row:3}],       // active goals this level
+    collectedGoals: [],            // goals visited this run
     steps: 0,
     running: false
   };
@@ -839,28 +869,78 @@
   }
 
   // ==============================================================
-  // TARGET IMAGE POSITIONING
+  // TARGET IMAGE POSITIONING (multi-sock support)
   // ==============================================================
-  const targetImg = document.getElementById('target-image');
+  const targetImg = document.getElementById('target-image'); // keep for compat; hide it
+  targetImg.style.display = 'none';
 
-  function updateTargetPosition() {
+  // Sock elements keyed by "col,row"
+  const sockElements = {};
+
+  function createSockElement(col, row) {
+    const key = `${col},${row}`;
+    if (sockElements[key]) return;
+    const img = document.createElement('img');
+    img.src = 'socks.png';
+    img.alt = 'Target';
+    img.style.cssText = 'position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-50%);object-fit:contain;';
+    document.getElementById('grid-container').appendChild(img);
+    sockElements[key] = img;
+  }
+
+  function positionSockElement(col, row) {
+    const key = `${col},${row}`;
+    const img = sockElements[key];
+    if (!img) return;
     const container = document.getElementById('grid-container');
     const width = container.clientWidth;
     const height = container.clientHeight;
-    const mapped = getMappedPosition(state.goal.col, state.goal.row);
+    const mapped = getMappedPosition(col, row);
     const cellW = width / 12;
     const cellH = height / 12;
-    const centerX = mapped.x * cellW + cellW / 2;
-    const centerY = mapped.y * cellH + cellH / 2;
-    targetImg.style.left = `${centerX}px`;
-    targetImg.style.top = `${centerY}px`;
+    img.style.left = `${mapped.x * cellW + cellW / 2}px`;
+    img.style.top  = `${mapped.y * cellH + cellH / 2}px`;
     const size = Math.min(cellW, cellH) * 0.8;
-    targetImg.style.width = `${size}px`;
-    targetImg.style.height = `${size}px`;
+    img.style.width  = `${size}px`;
+    img.style.height = `${size}px`;
   }
 
+  function clearAllSocks() {
+    Object.values(sockElements).forEach(el => el.remove());
+    for (const k in sockElements) delete sockElements[k];
+  }
+
+  function showSocksForLevel() {
+    clearAllSocks();
+    const def = getLevelDef();
+    if (def.hideSocks) return;
+    for (const g of state.goals) {
+      createSockElement(g.col, g.row);
+      positionSockElement(g.col, g.row);
+    }
+  }
+
+  function repositionAllSocks() {
+    for (const g of (state.goals || [])) {
+      positionSockElement(g.col, g.row);
+    }
+  }
+
+  function hideSockAt(col, row) {
+    const key = `${col},${row}`;
+    if (sockElements[key]) sockElements[key].style.display = 'none';
+  }
+
+  function showSockAt(col, row) {
+    const key = `${col},${row}`;
+    if (sockElements[key]) sockElements[key].style.display = '';
+  }
+
+  // legacy shim so nothing breaks
+  function updateTargetPosition() { repositionAllSocks(); }
+
   window.addEventListener('resize', () => {
-    updateTargetPosition();
+    repositionAllSocks();
     updateHUD();
     resizeCCTVNoise();
   });
@@ -875,7 +955,8 @@
     document.getElementById('hdr-steps').textContent = state.steps;
     document.getElementById('st-pos').textContent = `${colName(state.pos.col)}${state.pos.row+1}`;
     document.getElementById('st-facing').textContent = DIR_NAMES[state.dir];
-    document.getElementById('st-target').textContent = `${colName(state.goal.col)}${state.goal.row+1}`;
+    const targets = state.goals.map(g => `${colName(g.col)}${g.row+1}`).join('+');
+    document.getElementById('st-target').textContent = targets || '--';
     document.getElementById('dir-indicator').textContent = DIR_ARROWS[state.dir];
   }
 
@@ -1288,6 +1369,14 @@
     if (state.running) return;
     const code = document.getElementById('code-input').value;
     if (!code.trim()) { logConsole('> No code.', 'log-warn'); return; }
+
+    // Validate constraints first
+    const valErrors = validateCode(code);
+    if (valErrors.length) {
+      valErrors.forEach(e => logConsole('⚠ ' + e, 'log-error'));
+      return;
+    }
+
     logConsole('> Compiling...', 'log-info');
     const { actions, errors } = parseAndExecute(code);
     if (errors.length) {
@@ -1299,6 +1388,11 @@
     logConsole(`> Executing ${actions.length} actions...`, 'log-success');
     state.running = true;
     state.steps += actions.length;
+
+    // Reset collected goals for this run and restore sock visuals
+    state.collectedGoals = [];
+    for (const g of state.goals) showSockAt(g.col, g.row);
+
     document.getElementById('btn-run').classList.add('running');
     document.getElementById('btn-run').textContent = '■ STOP';
     setStatus('RUNNING');
@@ -1333,7 +1427,10 @@
       document.getElementById('btn-run').textContent = '▶ RUN';
       setStatus('IDLE');
       logConsole(`> Finished at ${colName(state.pos.col)}${state.pos.row+1}`, 'log-info');
-      checkWin();
+      if (!checkWin()) {
+        logConsole('> Target not reached. Resetting position...', 'log-warn');
+        resetCharacterToStart();
+      }
     });
   }
 
@@ -1349,6 +1446,22 @@
       state.dir = move.dir;
       refreshUI();
       playIdleForCell(state.pos.col, state.pos.row, state.dir);
+
+      // Multi-target: collect sock if stepped on a goal
+      const def = getLevelDef();
+      if (def.multiTarget) {
+        for (const g of state.goals) {
+          if (state.pos.col === g.col && state.pos.row === g.row) {
+            const already = state.collectedGoals.some(c => c.col===g.col && c.row===g.row);
+            if (!already) {
+              state.collectedGoals.push({...g});
+              hideSockAt(g.col, g.row);
+              logConsole(`  ✦ Sock collected at ${colName(g.col)}${g.row+1}!`, 'log-success');
+            }
+          }
+        }
+      }
+
       if (currentTimeout) clearTimeout(currentTimeout);
       currentTimeout = setTimeout(() => { currentTimeout = null; executeQueue(moves, idx+1, done); }, ACTION_DELAY_MS);
     } else if (move.type === 'turn_left') {
@@ -1373,40 +1486,116 @@
   }
 
   function checkWin() {
-    if (state.pos.col === state.goal.col && state.pos.row === state.goal.row) {
+    const def = getLevelDef();
+    let won = false;
+    if (def.multiTarget) {
+      won = state.goals.every(g => state.collectedGoals.some(c => c.col===g.col && c.row===g.row));
+    } else {
+      won = state.goals.some(g => state.pos.col===g.col && state.pos.row===g.row);
+    }
+    if (won) {
       logConsole(`✦ TARGET REACHED! Level ${state.level} complete.`, 'log-success');
       showOverlay();
     }
+    return won;
   }
 
   // ==============================================================
   // LEVELS & UTILITIES
   // ==============================================================
-  function randomCell() { return { col: Math.floor(Math.random()*4), row: Math.floor(Math.random()*4) }; }
-  function cellDist(a,b) { return Math.abs(a.col-b.col)+Math.abs(a.row-b.row); }
-  function generateGoal(playerPos) {
-    let goal;
-    do { goal = randomCell(); } while ((goal.col===playerPos.col && goal.row===playerPos.row) || cellDist(goal, playerPos) <= 1);
-    return goal;
+  function getLevelDef() {
+    const idx = Math.min(state.level - 1, LEVEL_DEFS.length - 1);
+    return LEVEL_DEFS[idx];
   }
 
+  function randomCell() { return { col: Math.floor(Math.random()*4), row: Math.floor(Math.random()*4) }; }
+  function cellDist(a,b) { return Math.abs(a.col-b.col)+Math.abs(a.row-b.row); }
+  function randomDir() { return DIRS[Math.floor(Math.random()*4)]; }
+
   function startLevel() {
-    state.pos = { col:0, row:0 };
-    state.dir = 'N';
-    state.goal = generateGoal(state.pos);
+    const def = getLevelDef();
+    const isEndless = def.startPos === null;
+
+    if (isEndless) {
+      state.pos = randomCell();
+      state.dir = randomDir();
+      let goal;
+      do { goal = randomCell(); } while (goal.col===state.pos.col && goal.row===state.pos.row);
+      state.goals = [goal];
+      state.goal = goal;
+    } else {
+      state.pos = { ...def.startPos };
+      state.dir = def.startDir;
+      state.goals = def.goals.map(g => ({...g}));
+      state.goal = state.goals[0];
+    }
+
+    state.collectedGoals = [];
     state.running = false;
     document.getElementById('run-progress').style.width = '0%';
     refreshUI();
+    showSocksForLevel();
     clearConsole();
     logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
-    logConsole(`  Start: ${colName(0)}1  |  Target: ${colName(state.goal.col)}${state.goal.row+1}`, 'log-warn');
+    const targetStr = state.goals.map(g => `${colName(g.col)}${g.row+1}`).join(' + ');
+    logConsole(`  Start: ${colName(state.pos.col)}${state.pos.row+1} facing ${DIR_NAMES[state.dir]}  |  Target: ${targetStr}`, 'log-warn');
+
+    const def2 = getLevelDef();
+    if (def2.maxLines) logConsole(`  ⚠ Max ${def2.maxLines} lines allowed`, 'log-warn');
+    if (def2.requireForLoop) logConsole(`  ⚠ Must use a for loop`, 'log-warn');
+    if (def2.requireFunc) logConsole(`  ⚠ Must define and call a function`, 'log-warn');
+    if (def2.requireWhile) logConsole(`  ⚠ Must use a while loop`, 'log-warn');
+    if (def2.hideSocks) logConsole(`  ⚠ Target location hidden — scan the grid!`, 'log-warn');
+
     setStatus('IDLE');
     playIdleForCell(state.pos.col, state.pos.row, state.dir);
   }
 
-  function nextLevel() { state.level++; hideOverlay(); startLevel(); }
+  function resetCharacterToStart() {
+    const def = getLevelDef();
+    if (def.startPos) {
+      state.pos = { ...def.startPos };
+      state.dir = def.startDir;
+    }
+    state.collectedGoals = [];
+    for (const g of state.goals) showSockAt(g.col, g.row);
+    refreshUI();
+    playIdleForCell(state.pos.col, state.pos.row, state.dir);
+  }
+
+  function nextLevel() {
+    const justCompleted = state.level;
+    state.level++;
+    hideOverlay();
+    showLevelCompleteDialogue(justCompleted);
+  }
+
   function showOverlay() { document.getElementById('overlay').classList.add('show'); }
   function hideOverlay() { document.getElementById('overlay').classList.remove('show'); }
+
+  // ==============================================================
+  // CODE VALIDATION
+  // ==============================================================
+  function validateCode(code) {
+    const def = getLevelDef();
+    const errors = [];
+    const nonEmptyLines = code.split('\n').filter(l => l.trim() && !l.trim().startsWith('#'));
+    if (def.maxLines && nonEmptyLines.length > def.maxLines) {
+      errors.push(`Too many lines! Max ${def.maxLines} non-empty lines allowed (you have ${nonEmptyLines.length})`);
+    }
+    if (def.requireForLoop && !/^\s*for\s+/m.test(code)) {
+      errors.push('This level requires a for loop!');
+    }
+    if (def.requireFunc) {
+      const hasDef = /^\s*def\s+\w+\s*\(\)/m.test(code);
+      const hasCall = /^\s*\w+\(\)\s*$/m.test(code);
+      if (!hasDef || !hasCall) errors.push('This level requires you to define and call a function!');
+    }
+    if (def.requireWhile && !/^\s*while\s+/m.test(code)) {
+      errors.push('This level requires a while loop!');
+    }
+    return errors;
+  }
 
   function logConsole(msg, cls='log-line') {
     const body = document.getElementById('console-body');
@@ -1582,9 +1771,37 @@
     "I guess you are going to have to help me move. Please. I erm don't want my mum to get mad at me for leaving my dirty socks out again! Try writing out some functions in main.py. Have a look at instructions.txt for help"
   ];
 
+  // Post-level dialogues: keyed by the level number just completed
+  // Each is an array of pages. Last page's "next" starts the new level.
+  const LEVEL_COMPLETE_DIALOGUES = {
+    1: [
+      "Great you did it! I've still got a few more to pick up and since you're here you might as well do it.",
+      "Wait. Who are you? Huh? Oh yeah right, you. I must be running out of memory! This time try do it in only 2 lines! Try using a for loop"
+    ],
+    2: [
+      "Alright smarty pants. Now try this one in just 5"
+    ],
+    3: [
+      "Wouldn't it be great if you made functions this time!"
+    ],
+    4: [
+      "Socks galore! They're multiplying! Complete this in 10 lines or less and use a function"
+    ],
+    5: [
+      "That took you a while... speaking of 'while'.... use a while loop this time!"
+    ],
+    6: [
+      "These must be super alien socks. They are now invisible! Good luck!"
+    ],
+    7: [
+      "Well since you've made it this far you must really enjoy picking up socks. COMMENCE INFINITE SOCK MODE"
+    ]
+  };
+
   let dialogueStep = 0;
   let dialogueTypingInterval = null;
   let dialogueVideoTimeout = null;
+  let dialogueOnComplete = null; // callback when all pages done
 
   const dialoguePopup   = document.getElementById('dialogue-popup');
   const dialogueTyped   = document.getElementById('dialogue-typed-text');
@@ -1594,17 +1811,18 @@
   const faceIcon        = document.getElementById('face-icon');
   const facePlaceholder = document.getElementById('dialogue-video-placeholder');
 
-  // Dialogue audio — single instance, pause/resume between steps
   const dialogueAudio = new Audio('audio/talking.mp3');
   dialogueAudio.loop = false;
 
-  function startDialogueStep(stepIndex) {
-    const text = DIALOGUE_LINES[stepIndex];
+  // Active pages list for current dialogue session
+  let activeDialoguePages = [];
+  let activeDialoguePage = 0;
+
+  function startDialoguePage(text) {
     dialogueTyped.textContent = '';
     dialogueCursor.classList.remove('hidden');
     dialogueNextBtn.classList.remove('visible');
 
-    // Try to play the talkingface video
     talkingVideo.src = 'videos/talkingface.mp4';
     talkingVideo.loop = false;
     talkingVideo.currentTime = 0;
@@ -1615,16 +1833,13 @@
     const playPromise = talkingVideo.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {
-        // Video not available — show animated placeholder
         talkingVideo.style.display = 'none';
         facePlaceholder.style.display = 'flex';
       });
     }
 
-    // Play/resume the talking audio
     dialogueAudio.play().catch(() => {});
 
-    // Type out text over 5000ms
     const totalDuration = 5000;
     const chars = text.split('');
     const intervalMs = totalDuration / chars.length;
@@ -1638,7 +1853,6 @@
       } else {
         clearInterval(dialogueTypingInterval);
         dialogueTypingInterval = null;
-        // Typing done — pause video on last frame, hide cursor, show next button
         talkingVideo.pause();
         dialogueAudio.pause();
         faceIcon.classList.remove('talking');
@@ -1647,7 +1861,6 @@
       }
     }, intervalMs);
 
-    // Pause video at 5s mark as safety net
     if (dialogueVideoTimeout) clearTimeout(dialogueVideoTimeout);
     dialogueVideoTimeout = setTimeout(() => {
       talkingVideo.pause();
@@ -1656,28 +1869,45 @@
     }, totalDuration + 100);
   }
 
+  function openDialogue(pages, onComplete) {
+    activeDialoguePages = pages;
+    activeDialoguePage = 0;
+    dialogueOnComplete = onComplete || null;
+    document.getElementById('dialogue-backdrop').classList.remove('hidden');
+    startDialoguePage(pages[0]);
+  }
+
   function advanceDialogue() {
     if (dialogueTypingInterval) { clearInterval(dialogueTypingInterval); dialogueTypingInterval = null; }
     if (dialogueVideoTimeout) { clearTimeout(dialogueVideoTimeout); dialogueVideoTimeout = null; }
-    dialogueStep++;
-    if (dialogueStep >= DIALOGUE_LINES.length) {
-      // Close popup — game begins
+    activeDialoguePage++;
+    if (activeDialoguePage >= activeDialoguePages.length) {
       document.getElementById('dialogue-backdrop').classList.add('hidden');
       talkingVideo.src = '';
       dialogueAudio.pause();
       dialogueAudio.currentTime = 0;
       faceIcon.classList.remove('talking');
+      if (dialogueOnComplete) dialogueOnComplete();
+      dialogueOnComplete = null;
     } else {
-      startDialogueStep(dialogueStep);
+      startDialoguePage(activeDialoguePages[activeDialoguePage]);
     }
   }
 
   dialogueNextBtn.addEventListener('click', advanceDialogue);
 
   function initDialogue() {
-    document.getElementById('dialogue-backdrop').classList.remove('hidden');
-    dialogueStep = 0;
-    startDialogueStep(0);
+    openDialogue(DIALOGUE_LINES, null);
+  }
+
+  function showLevelCompleteDialogue(completedLevel) {
+    const pages = LEVEL_COMPLETE_DIALOGUES[completedLevel];
+    if (pages) {
+      openDialogue(pages, () => { startLevel(); });
+    } else {
+      // No dialogue for this level — just start next
+      startLevel();
+    }
   }
 
   // ==============================================================
@@ -1688,7 +1918,6 @@
     initEditor();
     initBackgroundVideo();
     initCCTV();
-    updateTargetPosition();
 
     document.querySelectorAll('.tab').forEach(tab => {
       if (tab.getAttribute('data-tab') !== 'instructions') {
@@ -1706,6 +1935,7 @@
         document.getElementById('btn-run').textContent = '▶ RUN';
         setStatus('IDLE');
         logConsole('> Execution stopped by user.', 'log-warn');
+        resetCharacterToStart();
       } else runCode();
     });
     document.getElementById('btn-clear').addEventListener('click', resetCode);
