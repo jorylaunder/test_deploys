@@ -749,7 +749,7 @@
 <div id="overlay">
   <div class="overlay-title win">OBJECTIVE COMPLETE</div>
   <div class="overlay-sub" id="overlay-sub">UNIT REACHED TARGET COORDINATES</div>
-  <button id="btn-next" onclick="nextLevel()">⟫ NEXT LEVEL ⟪</button>
+  <button id="btn-next" onclick="playClick(); nextLevel()">⟫ NEXT LEVEL ⟪</button>
 </div>
 
 <script>
@@ -955,7 +955,8 @@
     document.getElementById('hdr-steps').textContent = state.steps;
     document.getElementById('st-pos').textContent = `${colName(state.pos.col)}${state.pos.row+1}`;
     document.getElementById('st-facing').textContent = DIR_NAMES[state.dir];
-    const targets = state.goals.map(g => `${colName(g.col)}${g.row+1}`).join('+');
+    const def = getLevelDef();
+    const targets = def.hideSocks ? '--' : state.goals.map(g => `${colName(g.col)}${g.row+1}`).join('+');
     document.getElementById('st-target').textContent = targets || '--';
     document.getElementById('dir-indicator').textContent = DIR_ARROWS[state.dir];
   }
@@ -1388,6 +1389,7 @@
     logConsole(`> Executing ${actions.length} actions...`, 'log-success');
     state.running = true;
     state.steps += actions.length;
+    startRunningSound();
 
     // Reset collected goals for this run and restore sock visuals
     state.collectedGoals = [];
@@ -1423,6 +1425,7 @@
     }
     executeQueue(simMoves, 0, () => {
       state.running = false;
+      stopRunningSound();
       document.getElementById('btn-run').classList.remove('running');
       document.getElementById('btn-run').textContent = '▶ RUN';
       setStatus('IDLE');
@@ -1537,10 +1540,11 @@
     showSocksForLevel();
     clearConsole();
     logConsole(`► LEVEL ${state.level} // H.U.M.A.N. ACTIVE`, 'log-info');
-    const targetStr = state.goals.map(g => `${colName(g.col)}${g.row+1}`).join(' + ');
-    logConsole(`  Start: ${colName(state.pos.col)}${state.pos.row+1} facing ${DIR_NAMES[state.dir]}  |  Target: ${targetStr}`, 'log-warn');
 
     const def2 = getLevelDef();
+    const targetStr = def2.hideSocks ? '???' : state.goals.map(g => `${colName(g.col)}${g.row+1}`).join(' + ');
+    logConsole(`  Start: ${colName(state.pos.col)}${state.pos.row+1} facing ${DIR_NAMES[state.dir]}  |  Target: ${targetStr}`, 'log-warn');
+
     if (def2.maxLines) logConsole(`  ⚠ Max ${def2.maxLines} lines allowed`, 'log-warn');
     if (def2.requireForLoop) logConsole(`  ⚠ Must use a for loop`, 'log-warn');
     if (def2.requireFunc) logConsole(`  ⚠ Must define and call a function`, 'log-warn');
@@ -1814,6 +1818,31 @@
   const dialogueAudio = new Audio('audio/talking.mp3');
   dialogueAudio.loop = false;
 
+  // ==============================================================
+  // SOUND EFFECTS
+  // ==============================================================
+  const clickAudio = new Audio('audio/click.mp3');
+  clickAudio.preload = 'auto';
+
+  const runningAudio = new Audio('audio/running.mp3');
+  runningAudio.loop = true;
+  runningAudio.preload = 'auto';
+
+  function playClick() {
+    clickAudio.currentTime = 0;
+    clickAudio.play().catch(() => {});
+  }
+
+  function startRunningSound() {
+    runningAudio.currentTime = 0;
+    runningAudio.play().catch(() => {});
+  }
+
+  function stopRunningSound() {
+    runningAudio.pause();
+    runningAudio.currentTime = 0;
+  }
+
   // Active pages list for current dialogue session
   let activeDialoguePages = [];
   let activeDialoguePage = 0;
@@ -1894,7 +1923,7 @@
     }
   }
 
-  dialogueNextBtn.addEventListener('click', advanceDialogue);
+  dialogueNextBtn.addEventListener('click', () => { playClick(); advanceDialogue(); });
 
   function initDialogue() {
     openDialogue(DIALOGUE_LINES, null);
@@ -1928,9 +1957,11 @@
       stopFlashing(); switchTab('code');
     });
     document.getElementById('btn-run').addEventListener('click', () => {
+      playClick();
       if (state.running) {
         if (currentTimeout) { clearTimeout(currentTimeout); currentTimeout = null; }
         state.running = false;
+        stopRunningSound();
         document.getElementById('btn-run').classList.remove('running');
         document.getElementById('btn-run').textContent = '▶ RUN';
         setStatus('IDLE');
@@ -1938,7 +1969,7 @@
         resetCharacterToStart();
       } else runCode();
     });
-    document.getElementById('btn-clear').addEventListener('click', resetCode);
+    document.getElementById('btn-clear').addEventListener('click', () => { playClick(); resetCode(); });
     document.getElementById('console-clear').addEventListener('click', clearConsole);
     startLevel();
     logConsole('  Ctrl+Enter to execute', 'log-line');
