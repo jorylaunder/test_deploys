@@ -90,7 +90,6 @@
     height: 100%;
     object-fit: cover;
   }
-  #bg-video { z-index: 0; }
   #action-video { z-index: 1; }
 
   #target-image {
@@ -671,7 +670,6 @@
   <div id="viewport">
     <div id="dir-indicator">↑</div>
     <div id="grid-container">
-      <video id="bg-video" class="video-layer" muted playsinline autoplay loop></video>
       <video id="action-video" class="video-layer" muted playsinline autoplay loop></video>
       <img id="target-image" src="socks.png" alt="Target">
 
@@ -838,16 +836,7 @@
   // ==============================================================
   // VIDEO SYSTEM
   // ==============================================================
-  const bgVideo = document.getElementById('bg-video');
   const actionVideo = document.getElementById('action-video');
-  const BACKGROUND_VIDEO_PATH = 'videos/background.mp4';
-
-  function initBackgroundVideo() {
-    bgVideo.src = BACKGROUND_VIDEO_PATH;
-    bgVideo.loop = true;
-    bgVideo.load();
-    bgVideo.play().catch(e => console.log("Background video play error (optional)", e));
-  }
 
   function getVideoPath(col, row, dir) {
     return `videos/cell_${col}_${row}_idle_${dir}.mp4`;
@@ -1945,7 +1934,6 @@
   document.addEventListener('DOMContentLoaded', () => {
     buildInstructions();
     initEditor();
-    initBackgroundVideo();
     initCCTV();
 
     document.querySelectorAll('.tab').forEach(tab => {
